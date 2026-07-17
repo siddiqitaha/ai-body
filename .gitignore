@@ -1,0 +1,7 @@
+# migrated data copy (rebuildable from the source memory store via migrate.py) , not source
+brain-new.db
+notes-export.jsonl
+migration-full.log
+calibration-receipt.json
+__pycache__/
+*.pyc
