@@ -72,7 +72,7 @@ class Cage:
     call is checked against the worker's manifest allowlist AND the fail-closed gate; every
     model call passes the same egress gate. A worker cannot reach a tool not in its manifest,
     nor bypass the bus. This is the in-process half of the boundary; a real untrusted worker
-    also gets an OS sandbox + host firewall (the hard boundary) , noted, not built in Phase 4.
+    also gets an OS sandbox + host firewall (the hard boundary), noted, not built in Phase 4.
     """
 
     def __init__(self, heart: "Heart", worker_id: str, allowed_tools: list[str],

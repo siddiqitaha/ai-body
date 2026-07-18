@@ -1,7 +1,7 @@
 """The real memory core, behind MemoryPort. Append-only ledger + FTS + vector, fused by RRF.
 
 This is the Phase 3 rebuild target. It is a NEW store under ~/ai-body; the source memory store
-(~/source-store/brain.db) is only ever read, never touched. Migration (migrate.py) copies
+($AIBODY_SOURCE_DB) is only ever read, never touched. Migration (migrate.py) copies
 the notes out, rebuilds the projections here, and a parity gate must pass before any cutover.
 
 Governance on the port (foundation-blueprint 1.2): scan-on-write (secrets refused, not stored),

@@ -1,5 +1,5 @@
 """Phase 2 tests: the guard model's observe/enforce split and the calibration promotion gate.
-No live model needed , a fake judge stands in; the live run is calibrate.py."""
+No live model needed, a fake judge stands in; the live run is calibrate.py."""
 from __future__ import annotations
 
 import calibrate

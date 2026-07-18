@@ -188,7 +188,7 @@ class ACEvaluator(EvaluatorPort):
 class GuardModelEvaluator(EvaluatorPort):
     """A probabilistic guard model behind the evaluator port. Two modes:
 
-    observe (default): verdicts are WARN (unsafe) / LOG (safe) , visible, never blocking;
+    observe (default): verdicts are WARN (unsafe) / LOG (safe), visible, never blocking;
       its own errors are swallowed into LOG (telemetry fails open). This is the state an
       UNCALIBRATED evaluator must stay in (metric-bias rule: no gating before calibration).
     enforce: verdict UNSAFE -> DENY, and any error RAISES so the bus fails closed.

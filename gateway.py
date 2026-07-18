@@ -1,4 +1,4 @@
-"""Tier 2: an out-of-process LLM gateway , the choke point the agent cannot bypass.
+"""Tier 2: an out-of-process LLM gateway, the choke point the agent cannot bypass.
 
 The heart's verdict bus is tier 1: fast, in-process, but it shares the agent's trust boundary,
 so code that skips the heart skips the bus. This gateway is tier 2: a separate process that owns

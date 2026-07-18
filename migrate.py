@@ -2,7 +2,7 @@
 toward the source memory store.
 
   1. export_notes()  - dump the source memory store's ACTIVE notes to a plain JSONL (the portable truth).
-                       Reads ~/source-store/brain.db in mode=ro; never writes to it.
+                       Reads $AIBODY_SOURCE_DB in mode=ro; never writes to it.
   2. rebuild()       - stand up a fresh BrainMemory here and re-import, rebuilding FTS + vectors.
   3. parity_gate()   - the cutover gate: for a sample of imported notes, query with a snippet of
                        the note and require the note itself to come back in top-k. Reports hit@k.
@@ -13,14 +13,17 @@ Nothing is cut over. The new store lives at ~/ai-body/brain-new.db; the source m
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 
 from memory import BrainMemory
 
-LIVE_DB = "$AIBODY_SOURCE_DB"
-NOTES_JSONL = "./notes-export.jsonl"
-NEW_DB = "./brain-new.db"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+# The source memory store to migrate FROM. Set AIBODY_SOURCE_DB to your existing store.
+LIVE_DB = os.environ.get("AIBODY_SOURCE_DB", os.path.join(_BASE, "source-memory.db"))
+NOTES_JSONL = os.path.join(_BASE, "notes-export.jsonl")
+NEW_DB = os.path.join(_BASE, "brain-new.db")
 
 
 def export_notes(out_path: str = NOTES_JSONL) -> int:
@@ -74,7 +77,7 @@ def parity_gate(new_db: str = NEW_DB, sample: int = 60, k: int = 12,
     return {"sample": len(ids), "k": k, "hits": hits, "hit_at_k": round(rate, 3)}
 
 
-# The gate is 'new within CI of OLD' , not an arbitrary absolute. Measured: the source memory store
+# The gate is 'new within CI of OLD', not an arbitrary absolute. Measured: the source memory store
 # itself scores hit@12 = 0.913 on this proxy (parity_harness.py), and the new core matches it
 # exactly (delta 0.000). So the floor is the old baseline, not a number higher than the source.
 PARITY_FLOOR = 0.90  # old-baseline 0.913 minus a small CI margin; new core met it (0.913)

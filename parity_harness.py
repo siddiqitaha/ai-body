@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import sqlite3
 import urllib.request
 
-OLD_DB = "$AIBODY_SOURCE_DB"
-NEW_DB = "./brain-new.db"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+OLD_DB = os.environ.get("AIBODY_SOURCE_DB", os.path.join(_BASE, "source-memory.db"))
+NEW_DB = os.path.join(_BASE, "brain-new.db")
 EMBED_URL = "http://127.0.0.1:8001/v1/embeddings"
 EMBED_MODEL = "Qwen/Qwen3-Embedding-4B"
 

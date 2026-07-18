@@ -14,7 +14,7 @@ from ports import MemoryPort
 
 class DualWriteMemory(MemoryPort):
     """Writes to primary AND shadow; reads from `read_from`. A shadow write that fails is logged
-    (via on_divergence) and NEVER blocks the write to primary , the shadow is a candidate, not yet
+    (via on_divergence) and NEVER blocks the write to primary, the shadow is a candidate, not yet
     the source of truth. flip()/rollback() switch which store answers reads."""
 
     def __init__(self, primary: MemoryPort, shadow: MemoryPort, on_divergence=None) -> None:
@@ -49,7 +49,7 @@ class DualWriteMemory(MemoryPort):
 
     # --- shadow-period tools ---------------------------------------------------
     def compare_recall(self, query: str, k: int, scope: str = "global") -> dict:
-        """Read from BOTH and report overlap , the shadow-period divergence check."""
+        """Read from BOTH and report overlap, the shadow-period divergence check."""
         a = [h["id"] for h in self.primary.recall(query, k, scope)]
         b = [h["id"] for h in self.shadow.recall(query, k, scope)]
         overlap = len(set(a) & set(b)) / max(len(set(a) | set(b)), 1)

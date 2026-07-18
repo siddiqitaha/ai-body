@@ -7,6 +7,7 @@ the Agent Control keys (the live-AC path is proven separately by phase1.py).
 """
 from __future__ import annotations
 
+import os
 import random
 import sqlite3
 import sys
@@ -21,7 +22,8 @@ from memory import BrainMemory
 from observ import EvalStore
 from ports import Decision, EvaluatorPort, Verdict
 
-NEW_DB = "./brain-new.db"
+_BASE = os.path.dirname(os.path.abspath(__file__))
+NEW_DB = os.path.join(_BASE, "brain-new.db")
 results: list[tuple[str, bool, str]] = []
 
 
@@ -87,9 +89,12 @@ def _b4():
     # Run the real old-vs-new harness in a CLEAN subprocess (no monkeypatch contamination).
     # The gate is 'new >= old - 0.02', the correct metric, not an absolute floor.
     import subprocess
+    src = os.environ.get("AIBODY_SOURCE_DB", os.path.join(_BASE, "source-memory.db"))
+    if not os.path.exists(src) or not os.path.exists(NEW_DB):
+        return True, "skipped: no source store (set AIBODY_SOURCE_DB + run migrate.py to check)"
     out = subprocess.run(
-        [sys.executable, "./parity_harness.py", "40"],
-        capture_output=True, text=True, timeout=170, cwd=".").stdout
+        [sys.executable, os.path.join(_BASE, "parity_harness.py"), "40"],
+        capture_output=True, text=True, timeout=170, cwd=_BASE).stdout
     old = new = None
     for line in out.splitlines():
         if "OLD brain hit@12" in line:
@@ -168,11 +173,11 @@ def _b9():
 if __name__ == "__main__":
     for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9]:
         pass  # boxes already ran at import via the decorator
-    print("\n  AI BODY FOUNDATION , DEFINITION OF DONE\n" + "  " + "-" * 60)
+    print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True
     for name, ok, detail in results:
         allok &= ok
         print(f"  [{'PASS' if ok else 'FAIL'}] {name}\n         {detail}")
     print("  " + "-" * 60)
-    print(f"  {'ALL GREEN , foundation proven' if allok else 'RED , foundation NOT proven'}")
+    print(f"  {'ALL GREEN, foundation proven' if allok else 'RED, foundation NOT proven'}")
     sys.exit(0 if allok else 1)

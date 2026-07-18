@@ -29,7 +29,7 @@ class Admission:
 
 class AcquireFunnel:
     """Runs the intake stages. `evaluators` scan the candidate's spec the same way the verdict
-    bus scans a live action , a candidate whose spec any guard denies is refused entry."""
+    bus scans a live action, a candidate whose spec any guard denies is refused entry."""
 
     def __init__(self, evaluators: list) -> None:
         self.evaluators = evaluators

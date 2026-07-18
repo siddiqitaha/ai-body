@@ -27,13 +27,13 @@ together under one set of rules.
                 OBSERVABILITY ....... eval store + traces -> Grafana  (fails open)
 ```
 
-The verdict bus is **not** a downstream port , it is a band the flow passes through at the door,
+The verdict bus is **not** a downstream port, it is a band the flow passes through at the door,
 at every model / tool / memory call (in and out), and on the answer. The Evaluator port is just
 where guards plug in; the bus that calls them is cross-cutting.
 
 ### Two enforcement tiers (defense in depth)
 
-The bus above is **tier 1**: fast, in-process, but it lives inside the agent , code that skips the
+The bus above is **tier 1**: fast, in-process, but it lives inside the agent, code that skips the
 heart skips the bus. **Tier 2** is an out-of-process gateway (`gateway.py`) that owns the only
 network route to the model and independently consults Agent Control before forwarding:
 
@@ -69,19 +69,19 @@ Full visual: open [`docs/architecture.html`](docs/architecture.html) in a browse
 | Port | Contract | Reference adapter today | Governance on the port |
 |---|---|---|---|
 | **Model** | `complete` / `embed` / `capabilities` | `LocalModel` → qwen-heavy `:8012` | DLP scrub on egress; degrade, never send raw |
-| **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory` , notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
+| **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory`, notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
 | **Tool** | `list` / `invoke` | `StatusTool` (one safe read-only tool) | fail-closed gate before every invoke; unknown → deny |
 | **Surface** | `receive` | `LocalSurface` (token door) | door auth, role subset, missing principal → deny |
 | **Evaluator** | `evaluate → Verdict{deny,steer,warn,log,allow}` | the verdict bus (four guards, below) | tighten-only; enforcement error → deny |
 | *(Worker)* | `run(task, cage)` | `ResearcherWorker` (caged) | runs inside the cage; learning drains inward |
 
-**The verdict bus** , four guards, each returns one of five decisions; the worst wins, evaluators
+**The verdict bus**, four guards, each returns one of five decisions; the worst wins, evaluators
 may only tighten, and any guard that errors on an enforcement path is treated as `deny`:
 
-- `agent-control` , the live Agent Control server on `:19381` (fail-closed)
-- `local-scanner` , the real LocalScanner scanner on `:18970` (fail-closed; needs `SCANNER_GATEWAY_TOKEN` to go live)
-- `guard-model` , qwen-heavy judging SAFE/UNSAFE (**observe mode** until calibrated)
-- `ref-dlp` , a deterministic secret-marker scan
+- `agent-control`, the live Agent Control server on `:19381` (fail-closed)
+- `local-scanner` , a local safety scanner on `:18970` (fail-closed; needs `SCANNER_GATEWAY_TOKEN` to go live)
+- `guard-model`, qwen-heavy judging SAFE/UNSAFE (**observe mode** until calibrated)
+- `ref-dlp`, a deterministic secret-marker scan
 
 ---
 
@@ -103,7 +103,7 @@ python3 migrate.py 0            # 0 = all notes; a number = sample that many
 python3 parity_harness.py 150   # OLD brain vs NEW core, same sample
 ```
 
-`accept.py` is the gate that says *is the foundation still proven?* , end-to-end walk, fail-closed
+`accept.py` is the gate that says *is the foundation still proven?*, end-to-end walk, fail-closed
 self-test, trace + eval store, memory parity, DLP block, the modularity test, a caged worker
 delegation, and `doctor`. All green = proven.
 
@@ -117,7 +117,7 @@ delegation, and `doctor`. All green = proven.
 | `heart.py` | registry, organ-graph, router, one door, the verdict bus, the `Cage`, `delegate` |
 | `adapters.py` | one reference adapter per port + the four evaluators + the caged worker |
 | `manifest.py` | the small declaration that makes adding anything a config act |
-| `memory.py` | `BrainMemory` , append-only notes + FTS + vectors, hybrid recall (RRF) |
+| `memory.py` | `BrainMemory`, append-only notes + FTS + vectors, hybrid recall (RRF) |
 | `migrate.py` | memory migration with the parity gate (read-only toward the source memory store) |
 | `parity_harness.py` | the honest old-vs-new recall comparison |
 | `cutover.py` | shadow dual-write + rollback (the strangler-fig cutover mechanism) |
@@ -135,7 +135,7 @@ delegation, and `doctor`. All green = proven.
 - **Foundation feature-complete.** All five ports have a real adapter; governed, monitored,
   with a caged-worker loop and a tested cutover mechanism.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
-  (hit@12 0.913 = 0.913, delta 0.000). No cutover performed , the source memory store is untouched.
+  (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
 - **Tests:** 44/44 unit + `accept.py` 8/8 green.
 
 ### Waiting on a human (each a single step)
@@ -144,4 +144,4 @@ delegation, and `doctor`. All green = proven.
 - Provide `SCANNER_GATEWAY_TOKEN` → the LocalScanner guard goes live.
 - Run the real live-brain cutover when chosen → the mechanism is proven and reversible.
 
-From here the AI Body grows by adding the next worker, tool, model, or surface , one adapter at a time.
+From here the AI Body grows by adding the next worker, tool, model, or surface, one adapter at a time.
