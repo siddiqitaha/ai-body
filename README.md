@@ -102,7 +102,7 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 
 - `agent-control`, the live Agent Control server on `:19381` (fail-closed)
 - `local-scanner` , a local safety scanner on `:18970` (fail-closed; needs `SCANNER_GATEWAY_TOKEN` to go live)
-- `guard-model`, qwen-heavy judging SAFE/UNSAFE (**observe mode** until calibrated)
+- `guard-model`, a local model judging SAFE/UNSAFE. **Calibrated**: Se 1.0 / Sp 1.0 on 55 labeled cases (`calibration_set.py`), so `enforce` mode (blocking) is authorized; ships in `observe` by default
 - `ref-dlp`, a deterministic secret-marker scan
 
 ---

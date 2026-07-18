@@ -82,9 +82,13 @@ def setup_ac() -> None:
         print(f"attach control {cid} -> {s}")
 
 
-def build_governed(db_path: str = ":memory:", real_memory: bool = True):
+def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mode: str = "observe"):
     """Wire the governed stack. real_memory=True uses the rebuilt BrainMemory core (FTS+vector+RRF,
-    scan-on-write); False falls back to the toy LedgerMemory. The source memory store is never touched."""
+    scan-on-write); False falls back to the toy LedgerMemory. The source memory store is never touched.
+
+    guard_mode: 'observe' (warn/log, never blocks) or 'enforce' (blocks on UNSAFE). Enforce is only
+    authorized AFTER calibration passes (see calibration_set.py; the shipped run scored Se 1.0 / Sp
+    1.0 on 55 cases). Enforce calls the local model on every gate, so it needs a live model endpoint."""
     from memory import BrainMemory
     trace, reg, store = Trace(), Registry(), EvalStore(db_path)
     reg.register(Manifest("model", "primary"), LocalModel())
@@ -94,8 +98,8 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True):
     reg.register(Manifest("evaluator", "ref-dlp"), RefEvaluator())
     reg.register(Manifest("evaluator", "agent-control"),
                  ACEvaluator(AC_BASE, AIBODY_AGENT))  # the LIVE control plane, fail-closed
-    reg.register(Manifest("evaluator", "guard-model", controls={"mode": "observe"}),
-                 GuardModelEvaluator(mode="observe"))  # UNCALIBRATED: warn/log only, never blocks
+    reg.register(Manifest("evaluator", "guard-model", controls={"mode": guard_mode}),
+                 GuardModelEvaluator(mode=guard_mode))  # CALIBRATED (Se/Sp 1.0); enforce = blocks
     heart = Heart(reg, trace, eval_store=store)
     door = LocalSurface(heart.handle, DOOR_TOKEN)
     reg.register(Manifest("surface", "local-door"), door)
