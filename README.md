@@ -9,16 +9,27 @@ Not a framework, not an LLM boss-agent. A small, owned coordinator that wires ow
 together under one set of rules.
 
 ```
-DOORS (token auth)
-   |  one entry
-THE HEART   registry . organ-graph . router . one door (auth + gate + trace, once)
-   |  gate . route
-FIVE PORTS  Model . Memory . Tool . Surface . Evaluator      (+ Worker)
-   |  every decision -> the bus
-VERDICT BUS guards vote -> deny/steer/warn/log/allow . worst wins . fail-closed
-   |  trace every step
-OBSERVABILITY  eval store + traces -> Grafana        (monitoring fails open)
+                request
+                   v
+                DOORS ............... token auth, deny-by-default
+                   v
+   +--------------------------------------------------+   the bus fires at:
+   |  VERDICT BUS  (cross-cutting, fail-closed)       |    - the inbound request
+   |  agent-control . local-scanner . guard-model .     |    - every tool call
+   |  ref-dlp  ->  deny/steer/warn/log/allow          |    - model input + output
+   |  worst wins . tighten-only . a guard error = deny|    - the answer (egress)
+   +--------------------------------------------------+
+                   v  (if allowed)
+                THE HEART ........... registry . organ-graph . router . one door
+                   v  gate each call
+   PORTS   Model . Memory . Tool . Surface . [Evaluator = where guards plug in]
+                   v  answer -> egress gate -> trace          (+ Worker, caged)
+                OBSERVABILITY ....... eval store + traces -> Grafana  (fails open)
 ```
+
+The verdict bus is **not** a downstream port , it is a band the flow passes through at the door,
+at every model / tool / memory call (in and out), and on the answer. The Evaluator port is just
+where guards plug in; the bus that calls them is cross-cutting.
 
 Full visual: the architecture page (private artifact, generated from this repo).
 
