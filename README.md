@@ -31,6 +31,23 @@ The verdict bus is **not** a downstream port , it is a band the flow passes thro
 at every model / tool / memory call (in and out), and on the answer. The Evaluator port is just
 where guards plug in; the bus that calls them is cross-cutting.
 
+### Two enforcement tiers (defense in depth)
+
+The bus above is **tier 1**: fast, in-process, but it lives inside the agent , code that skips the
+heart skips the bus. **Tier 2** is an out-of-process gateway (`gateway.py`) that owns the only
+network route to the model and independently consults Agent Control before forwarding:
+
+```
+agent ─▶ [tier 1: heart bus, in-proc, all 4 guards] ─▶ [tier 2: LLM gateway, out-of-proc]
+                                                              │ asks Agent Control :19381
+                                                              ├ allow ─▶ model :8012
+                                                              └ deny / AC down ─▶ 403, model never reached
+```
+
+Tier 1 is fast and catches most things; tier 2 is the choke point a compromised agent cannot
+bypass. Live-proven: a benign prompt forwards to the model, a secrets-file prompt is blocked by
+the gateway before the model is ever called. Point the Model adapter's base at the gateway to arm it.
+
 Full visual: the architecture page (private artifact, generated from this repo).
 
 ---
