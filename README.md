@@ -8,23 +8,45 @@ the core never changes.
 Not a framework, not an LLM boss-agent. A small, owned coordinator that wires owned parts
 together under one set of rules.
 
-```
-                request
-                   v
-                DOORS ............... token auth, deny-by-default
-                   v
-   +--------------------------------------------------+   the bus fires at:
-   |  VERDICT BUS  (cross-cutting, fail-closed)       |    - the inbound request
-   |  agent-control . local-scanner . guard-model .     |    - every tool call
-   |  ref-dlp  ->  deny/steer/warn/log/allow          |    - model input + output
-   |  worst wins . tighten-only . a guard error = deny|    - the answer (egress)
-   +--------------------------------------------------+
-                   v  (if allowed)
-                THE HEART ........... registry . organ-graph . router . one door
-                   v  gate each call
-   PORTS   Model . Memory . Tool . Surface . [Evaluator = where guards plug in]
-                   v  answer -> egress gate -> trace          (+ Worker, caged)
-                OBSERVABILITY ....... eval store + traces -> Grafana  (fails open)
+```mermaid
+flowchart TD
+    R(["request"]) --> D["DOORS<br/>token auth, deny-by-default"]
+    D -->|"check the request"| BUS
+
+    subgraph BUS["VERDICT BUS  ·  cross-cutting  ·  fail-closed"]
+      direction LR
+      G1["agent-control"]:::guard
+      G2["local-scanner"]:::guard
+      G3["guard-model"]:::guard
+      G4["ref-dlp"]:::guard
+    end
+
+    BUS -.- DEC["5 decisions: deny · steer · warn · log · allow<br/>worst wins · tighten-only · a guard error = deny"]:::note
+
+    BUS -->|"if allowed"| H["THE HEART<br/>registry · organ-graph · router · one door"]
+    H -->|"gate each call"| P
+
+    subgraph P["PORTS  ·  one adapter each"]
+      direction LR
+      M["Model"]:::port
+      MEM["Memory"]:::port
+      T["Tool"]:::port
+      S["Surface"]:::port
+      E["Evaluator<br/>(guards plug in)"]:::port
+    end
+
+    M -.->|"model in + out"| BUS
+    T -.->|"every tool call"| BUS
+    P --> O["OBSERVABILITY<br/>eval store + traces to Grafana (fails open)"]:::obs
+
+    classDef guard fill:#fdeaea,stroke:#d1444a,color:#111
+    classDef port fill:#eef2ff,stroke:#5566a0,color:#111
+    classDef note fill:#fafafa,stroke:#bbbbbb,color:#333
+    classDef obs fill:#f2f2f2,stroke:#888888,color:#111
+    style BUS fill:#fff5f5,stroke:#d1444a,stroke-width:2px
+    style H fill:#e2f4f6,stroke:#0e9bb0,stroke-width:2px
+    style D fill:#ffffff,stroke:#888888,color:#111
+    style P fill:#f7f8fb,stroke:#8890a8
 ```
 
 The verdict bus is **not** a downstream port, it is a band the flow passes through at the door,
@@ -48,7 +70,7 @@ Tier 1 is fast and catches most things; tier 2 is the choke point a compromised 
 bypass. Live-proven: a benign prompt forwards to the model, a secrets-file prompt is blocked by
 the gateway before the model is ever called. Point the Model adapter's base at the gateway to arm it.
 
-Full visual: open [`docs/architecture.html`](docs/architecture.html) in a browser for the complete map.
+Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-body/)** (source: [`docs/index.html`](docs/index.html)).
 
 ---
 
