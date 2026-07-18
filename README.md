@@ -48,7 +48,7 @@ Tier 1 is fast and catches most things; tier 2 is the choke point a compromised 
 bypass. Live-proven: a benign prompt forwards to the model, a secrets-file prompt is blocked by
 the gateway before the model is ever called. Point the Model adapter's base at the gateway to arm it.
 
-Full visual: the architecture page (private artifact, generated from this repo).
+Full visual: open [`docs/architecture.html`](docs/architecture.html) in a browser for the complete map.
 
 ---
 

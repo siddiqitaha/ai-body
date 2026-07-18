@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The AI Body, Architecture</title>
+<style>
+  :root{
+    --ground:#eef0f4; --panel:#f069;--panel:#ffffff; --panel-2:#f6f7f9;
+    --ink:#171b22; --muted:#5c6675; --faint:#8a93a3; --line:#d9dee6; --line-2:#e7ebf1;
+    --accent:#0e9bb0; --accent-ink:#0a6f7e; --accent-wash:#e2f4f6;
+    --deny:#d1444a; --steer:#5566e6; --warn:#c98115; --log:#7a8698; --allow:#1f9e6b;
+    --shadow:0 1px 2px rgba(20,28,40,.04),0 8px 24px -12px rgba(20,28,40,.12);
+    --mono:ui-monospace,"SF Mono",Menlo,"Cascadia Code",Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0c0f14; --panel:#141922; --panel-2:#0f141b;
+      --ink:#e6eaf0; --muted:#98a2b3; --faint:#6b7686; --line:#242c38; --line-2:#1b222c;
+      --accent:#2cc3d6; --accent-ink:#7fdde8; --accent-wash:#0f2a30;
+      --deny:#f0666c; --steer:#8493ff; --warn:#e6a53c; --log:#8894a6; --allow:#3ec38a;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#eef0f4; --panel:#ffffff; --panel-2:#f6f7f9; --ink:#171b22; --muted:#5c6675;
+    --faint:#8a93a3; --line:#d9dee6; --line-2:#e7ebf1; --accent:#0e9bb0; --accent-ink:#0a6f7e;
+    --accent-wash:#e2f4f6; --deny:#d1444a; --steer:#5566e6; --warn:#c98115; --log:#7a8698;
+    --allow:#1f9e6b; --shadow:0 1px 2px rgba(20,28,40,.04),0 8px 24px -12px rgba(20,28,40,.12);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0c0f14; --panel:#141922; --panel-2:#0f141b; --ink:#e6eaf0; --muted:#98a2b3;
+    --faint:#6b7686; --line:#242c38; --line-2:#1b222c; --accent:#2cc3d6; --accent-ink:#7fdde8;
+    --accent-wash:#0f2a30; --deny:#f0666c; --steer:#8493ff; --warn:#e6a53c; --log:#8894a6;
+    --allow:#3ec38a; --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -14px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(var(--line-2) 1px,transparent 1px);
+    background-size:22px 22px;background-position:-1px -1px;}
+  .wrap{max-width:1040px;margin:0 auto;padding:clamp(28px,5vw,64px) clamp(18px,4vw,32px) 96px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent-ink);}
+  h1{font-size:clamp(34px,6vw,60px);line-height:1.02;letter-spacing:-.03em;font-weight:800;
+    margin:.28em 0 .12em;text-wrap:balance;}
+  h1 .dim{color:var(--faint);font-weight:700;}
+  .lede{font-size:clamp(16px,2.1vw,20px);color:var(--muted);max-width:60ch;margin:.4em 0 0;
+    text-wrap:pretty;}
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 18px;display:flex;align-items:center;gap:12px;}
+  h2::after{content:"";flex:1;height:1px;background:var(--line);}
+  section{margin-top:clamp(48px,7vw,84px);}
+
+  /* hero status ribbon */
+  .ribbon{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:12px 16px;box-shadow:var(--shadow);min-width:118px;}
+  .stat b{display:block;font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .stat span{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);
+    text-transform:uppercase;}
+  .stat.green b{color:var(--allow);}
+
+  /* the full map, one comprehensive diagram */
+  .map{margin-top:clamp(40px,6vw,64px);}
+  .mapwrap{overflow-x:auto;}
+  .mapflow{display:flex;flex-direction:column;align-items:center;gap:0;min-width:520px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:18px;
+    padding:22px clamp(14px,3vw,30px) 26px;box-shadow:var(--shadow);}
+  .mrow{display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch;gap:7px;width:100%;}
+  .mnode{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:9px 14px;
+    font-size:13px;font-weight:650;text-align:center;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;justify-content:center;letter-spacing:-.01em;}
+  .mnode em{font-weight:400;font-style:normal;color:var(--muted);font-size:10.5px;
+    font-family:var(--mono);margin-top:3px;letter-spacing:.02em;}
+  .mnode.wide{width:min(600px,100%);}
+  .mnode.accent{border-top:3px solid var(--accent);}
+  .mnode.green{border-top:3px solid var(--allow);}
+  .mnode.model{border-top:3px solid var(--accent);background:var(--accent-wash);}
+  .mnode.small{font-size:12px;font-weight:600;padding:8px 11px;}
+  .mband{width:100%;border:1.5px solid var(--deny);border-radius:13px;
+    background:linear-gradient(color-mix(in srgb,var(--deny) 6%,transparent),var(--panel) 65%);
+    padding:13px 16px;text-align:center;}
+  .mband .bt{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--deny);font-weight:700;}
+  .mchips{font-family:var(--mono);font-size:12.5px;color:var(--accent-ink);margin:8px 0 6px;
+    font-weight:600;}
+  .mband em{font-family:var(--mono);font-size:11px;color:var(--muted);font-style:normal;}
+  .mdown{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;
+    padding:8px 0;text-transform:uppercase;position:relative;}
+  .mdown::before{content:"↓";display:block;color:var(--accent);font-size:15px;margin-bottom:2px;}
+  .ports5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;width:100%;}
+  .ports5 .mnode{padding:9px 6px;font-size:12.5px;}
+  .ports5 .mnode em{font-size:9.5px;}
+  .lane{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;width:100%;
+    background:var(--panel-2);border:1px dashed var(--line);border-radius:12px;padding:11px;margin:6px 0;}
+  .lane .ll{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);width:100%;text-align:left;margin-bottom:2px;}
+  .arrow{color:var(--accent);font-weight:800;font-size:16px;}
+  .mdeny{font-family:var(--mono);font-size:11px;color:var(--deny);border:1px dashed var(--deny);
+    border-radius:8px;padding:4px 10px;}
+  .maplegend{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:14px;width:100%;}
+  .maplegend .chip{font-size:10.5px;}
+
+  /* the vertical flow blueprint */
+  .flow{display:flex;flex-direction:column;align-items:stretch;gap:0;}
+  .layer{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:20px 22px;box-shadow:var(--shadow);position:relative;}
+  .layer .tag{position:absolute;top:-9px;left:18px;background:var(--accent);color:#fff;
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 9px;border-radius:6px;font-weight:600;}
+  :root[data-theme="dark"] .layer .tag{color:#04191d;}
+  @media (prefers-color-scheme:dark){.layer .tag{color:#04191d;}}
+  :root[data-theme="light"] .layer .tag{color:#fff;}
+  .layer h3{margin:6px 0 4px;font-size:17px;letter-spacing:-.01em;}
+  .layer p{margin:0;color:var(--muted);font-size:14px;max-width:70ch;}
+  .layer p code{font-family:var(--mono);font-size:.86em;color:var(--accent-ink);
+    background:var(--accent-wash);padding:1px 6px;border-radius:5px;}
+
+  .conn{align-self:center;width:2px;height:30px;background:linear-gradient(var(--line),var(--accent));
+    position:relative;}
+  .conn::after{content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--accent);}
+  .conn span{position:absolute;left:14px;top:50%;transform:translateY(-50%);white-space:nowrap;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--faint);
+    text-transform:uppercase;}
+
+  /* ports row */
+  .ports{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px;}
+  .port{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:13px;
+    border-top:3px solid var(--accent);}
+  .port .k{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);}
+  .port .n{font-weight:700;font-size:14.5px;margin:2px 0 5px;letter-spacing:-.01em;}
+  .port .a{font-size:12.5px;color:var(--muted);line-height:1.4;}
+  .port .a b{color:var(--ink);font-weight:600;}
+
+  /* evaluator / verdict bus */
+  .bus{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-top:16px;}
+  @media (max-width:720px){.bus{grid-template-columns:1fr;}}
+  .guards{display:flex;flex-direction:column;gap:8px;}
+  .guard{display:flex;align-items:center;gap:11px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:10px;padding:10px 13px;}
+  .guard .dot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .guard .nm{font-family:var(--mono);font-size:13px;font-weight:600;}
+  .guard .st{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:20px;
+    padding:2px 9px;}
+  .live .dot{background:var(--allow);} .obs .dot{background:var(--warn);}
+  .closed .dot{background:var(--steer);} .ref .dot{background:var(--log);}
+
+  .verdicts{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:15px;}
+  .verdicts .cap{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:11px;}
+  .vrow{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);}
+  .vrow:last-child{border-bottom:0;}
+  .chip{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;
+    color:#fff;min-width:52px;text-align:center;letter-spacing:.04em;}
+  :root[data-theme="dark"] .chip{color:#0a0d12;}
+  @media (prefers-color-scheme:dark){.chip{color:#0a0d12;}}
+  :root[data-theme="light"] .chip{color:#fff;}
+  .chip.deny{background:var(--deny);} .chip.steer{background:var(--steer);}
+  .chip.warn{background:var(--warn);} .chip.log{background:var(--log);} .chip.allow{background:var(--allow);}
+  .vrow small{color:var(--muted);font-size:12.5px;}
+  .busnote{margin-top:13px;font-size:12.5px;color:var(--muted);}
+  .busnote b{color:var(--deny);font-weight:700;}
+
+  /* the cross-cutting bus band */
+  .bus-band{border:1.5px solid var(--accent);background:
+    linear-gradient(var(--accent-wash),var(--panel) 60%);}
+  .bus-band .tag{background:var(--deny);}
+  .fires{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;}
+  .fires span{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--accent-ink);
+    background:var(--panel);border:1px solid var(--accent);border-radius:20px;padding:3px 11px;
+    display:flex;align-items:center;gap:7px;}
+  .fires span::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--deny);}
+  .portnote{margin-top:13px;font-size:12.5px;color:var(--muted);}
+  .portnote b{color:var(--ink);}
+
+  /* two enforcement tiers */
+  .tiers{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;}
+  .tnode{flex:1 1 150px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:15px 16px;box-shadow:var(--shadow);}
+  .tnode .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);}
+  .tnode .nm{font-weight:750;font-size:15px;letter-spacing:-.01em;margin:3px 0 5px;}
+  .tnode .ds{font-size:12px;color:var(--muted);line-height:1.4;}
+  .tnode.t1{border-top:3px solid var(--warn);} .tnode.t2{border-top:3px solid var(--allow);}
+  .tnode.tm{border-top:3px solid var(--accent);} .tnode.ta{border-top:3px solid var(--line);}
+  .tarr{display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:800;
+    font-size:22px;flex:0 0 auto;}
+  @media (max-width:640px){.tarr{transform:rotate(90deg);width:100%;height:20px;}}
+  .denybar{margin-top:12px;display:flex;align-items:center;gap:11px;border:1px dashed var(--deny);
+    border-radius:11px;padding:11px 15px;background:color-mix(in srgb,var(--deny) 7%,transparent);
+    font-size:13px;}
+  .denybar .x{font-family:var(--mono);font-weight:700;color:var(--deny);white-space:nowrap;}
+  .denybar span{color:var(--muted);}
+  .tiernote{margin-top:12px;font-size:12.5px;color:var(--muted);}
+  .tiernote b{color:var(--ink);font-weight:650;}
+
+  /* numbered journey */
+  .journey{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  @media (max-width:640px){.journey{grid-template-columns:1fr;}}
+  .step{display:flex;gap:13px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);}
+  .step .num{font-family:var(--mono);font-weight:800;font-size:13px;color:var(--accent);
+    border:1.5px solid var(--accent);border-radius:8px;width:30px;height:30px;flex:none;
+    display:grid;place-items:center;}
+  .step .t{font-weight:650;font-size:14px;margin-bottom:1px;letter-spacing:-.01em;}
+  .step .d{font-size:12.5px;color:var(--muted);line-height:1.4;}
+  .step .d code{font-family:var(--mono);font-size:.88em;color:var(--accent-ink);}
+
+  /* worker cage loop */
+  .cage{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 22px;
+    box-shadow:var(--shadow);}
+  .cagesteps{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;font-family:var(--mono);
+    font-size:12.5px;}
+  .cagesteps .b{background:var(--accent-wash);color:var(--accent-ink);border:1px solid var(--accent);
+    border-radius:8px;padding:5px 10px;font-weight:600;}
+  .cagesteps .ar{color:var(--faint);font-weight:700;}
+  .cage p{color:var(--muted);font-size:13.5px;margin:14px 0 0;max-width:74ch;}
+  .cage p b{color:var(--ink);}
+
+  /* invariants */
+  .inv{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;}
+  .rule{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    box-shadow:var(--shadow);}
+  .rule .h{font-weight:700;font-size:14px;letter-spacing:-.01em;display:flex;gap:8px;align-items:center;}
+  .rule .h::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--accent);flex:none;}
+  .rule .b{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.42;}
+
+  footer{margin-top:72px;padding-top:22px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.03em;
+    display:flex;flex-wrap:wrap;gap:8px 18px;}
+  .flow > .conn{margin:2px 0;}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Governed local agent · foundation</div>
+    <h1>The AI&nbsp;Body <span class="dim">: a walking skeleton that walks, governed.</span></h1>
+    <p class="lede">One personal AI system rebuilt as five swappable ports behind a deterministic
+      heart. Every model call, tool call, memory write, and answer passes a fail-closed gate on the
+      way through. Add anything later by writing one manifest, the core never changes.</p>
+    <div class="ribbon">
+      <div class="stat green"><b>8 / 8</b><span>done checks</span></div>
+      <div class="stat green"><b>44</b><span>tests pass</span></div>
+      <div class="stat"><b>0.913</b><span>recall parity</span></div>
+      <div class="stat"><b>1930</b><span>notes migrated</span></div>
+      <div class="stat"><b>5+1</b><span>ports live</span></div>
+    </div>
+  </header>
+
+  <!-- THE FULL MAP -->
+  <section class="map">
+    <h2>The full map, one view</h2>
+    <div class="mapwrap">
+      <div class="mapflow">
+
+        <div class="mrow"><div class="mnode wide">SURFACES · Doors
+          <em>console · voice · peer machine · MCP, token auth, deny-by-default</em></div></div>
+
+        <div class="mdown">then</div>
+
+        <div class="mrow"><div class="mband">
+          <div class="bt">Tier 1 · in-process verdict bus · cross-cutting · fail-closed</div>
+          <div class="mchips">agent-control ● &nbsp; local-scanner ● &nbsp; guard-model ◐ &nbsp; ref-dlp ○</div>
+          <em>deny · steer · warn · log · allow, worst wins · a guard error = deny<br>
+          fires at: the request · every tool &amp; model call · the answer</em>
+        </div></div>
+
+        <div class="mdown">if allowed</div>
+
+        <div class="mrow"><div class="mnode wide accent">THE HEART
+          <em>registry · organ-graph · router · one door (auth + gate + trace, once) · not an LLM boss</em></div></div>
+
+        <div class="mdown">gate each call</div>
+
+        <div class="mrow ports5">
+          <div class="mnode">Model<em>qwen-heavy</em></div>
+          <div class="mnode">Memory<em>BrainMemory</em></div>
+          <div class="mnode">Tool<em>governed</em></div>
+          <div class="mnode">Surface<em>token door</em></div>
+          <div class="mnode">Evaluator<em>guards plug in ↑</em></div>
+        </div>
+
+        <div class="lane">
+          <span class="ll">model path · tier 2 (the choke point)</span>
+          <div class="mnode small">Model</div><span class="arrow">▶</span>
+          <div class="mnode small green">TIER 2 · LLM gateway<em>out-of-process</em></div><span class="arrow">▶</span>
+          <div class="mnode small model">qwen-heavy :8012</div>
+          <div class="mnode small">Agent Control :19381<em>the gateway asks it first</em></div>
+          <span class="mdeny">deny / AC down → 403, model never called</span>
+        </div>
+
+        <div class="lane">
+          <span class="ll">tool path · nothing lands ungoverned</span>
+          <div class="mnode small">Acquire funnel<em>quarantine ▸ scan ▸ fingerprint ▸ sandbox</em></div>
+          <span class="arrow">▶</span>
+          <div class="mnode small">Tool (governed)<em>digest re-checked at invoke</em></div>
+        </div>
+
+        <div class="lane">
+          <span class="ll">memory · owned, on-box</span>
+          <div class="mnode wide small">BrainMemory
+            <em>append-only notes + FTS + vectors · fused by RRF · scan-on-write · recall parity 0.913</em></div>
+        </div>
+
+        <div class="mdown">a worker task</div>
+
+        <div class="mrow"><div class="mnode wide">WORKER · caged
+          <em>delegate ▸ organ-graph check ▸ gate the task ▸ run caged ▸ return + propose ▸ brain stores · learning drains inward</em></div></div>
+
+        <div class="mdown">every step</div>
+
+        <div class="mrow"><div class="mnode wide">OBSERVABILITY
+          <em>eval store (every verdict) + OTLP traces → Grafana · monitoring fails open</em></div></div>
+
+        <div class="maplegend">
+          <span class="chip deny">deny</span><span class="chip steer">steer</span>
+          <span class="chip warn">warn</span><span class="chip log">log</span>
+          <span class="chip allow">allow</span>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- THE FLOW -->
+  <section>
+    <h2>The flow, the guard bus wraps everything</h2>
+    <div class="flow">
+
+      <div class="layer">
+        <span class="tag">surfaces</span>
+        <h3>Doors</h3>
+        <p>Where a request arrives, the console, voice, a peer machine. Token auth, no keyless mode;
+          an unknown origin is rejected and a missing caller is denied, never defaulted to admin.</p>
+      </div>
+
+      <div class="conn"><span>auth · one entry</span></div>
+
+      <div class="layer bus-band">
+        <span class="tag">verdict bus · cross-cutting</span>
+        <h3>The request itself is checked first, then every call</h3>
+        <div class="bus">
+          <div class="guards">
+            <div class="guard live"><span class="dot"></span><span class="nm">agent-control</span>
+              <span class="st">live · :19381</span></div>
+            <div class="guard closed"><span class="dot"></span><span class="nm">local-scanner</span>
+              <span class="st">real · fail-closed</span></div>
+            <div class="guard obs"><span class="dot"></span><span class="nm">guard-model</span>
+              <span class="st">observe · qwen</span></div>
+            <div class="guard ref"><span class="dot"></span><span class="nm">ref-dlp</span>
+              <span class="st">marker scan</span></div>
+          </div>
+          <div class="verdicts">
+            <div class="cap">the five decisions</div>
+            <div class="vrow"><span class="chip deny">deny</span><small>block before it fires</small></div>
+            <div class="vrow"><span class="chip steer">steer</span><small>redirect the action</small></div>
+            <div class="vrow"><span class="chip warn">warn</span><small>allow, flag it</small></div>
+            <div class="vrow"><span class="chip log">log</span><small>allow, record only</small></div>
+            <div class="vrow"><span class="chip allow">allow</span><small>let it through</small></div>
+          </div>
+        </div>
+        <p class="busnote">This is not a downstream stop, it is a band the flow passes through
+          repeatedly. Worst verdict wins, evaluators may only tighten, and a guard that errors is
+          treated as <b>deny</b>. It fires at every boundary:</p>
+        <div class="fires">
+          <span>inbound request</span><span>every tool call</span>
+          <span>model input</span><span>model output</span><span>the answer (egress)</span>
+        </div>
+      </div>
+
+      <div class="conn"><span>if allowed → route</span></div>
+
+      <div class="layer">
+        <span class="tag">the heart</span>
+        <h3>Coordinator · one door · router</h3>
+        <p>Deterministic, <b>not</b> an LLM boss. It knows every adapter (the registry), who may call
+          whom (the organ-graph), routes the request cheap-first, and funnels everything through a
+          single place where <code>auth + gate + trace</code> happen exactly once.</p>
+      </div>
+
+      <div class="conn"><span>gate each call</span></div>
+
+      <div class="layer">
+        <span class="tag">ports · adapters</span>
+        <h3>Four I/O ports + the guard plug-in point</h3>
+        <p>Each port is a small stable interface; governance sits on the port, never inside the
+          adapter. A second adapter is a manifest edit with zero core changes.</p>
+        <div class="ports">
+          <div class="port"><div class="k">model</div><div class="n">Model</div>
+            <div class="a"><b>qwen-heavy</b> :8012 · DLP on egress</div></div>
+          <div class="port"><div class="k">memory</div><div class="n">Memory</div>
+            <div class="a"><b>BrainMemory</b> · notes + FTS + vectors (RRF), scan-on-write</div></div>
+          <div class="port"><div class="k">tool</div><div class="n">Tool</div>
+            <div class="a"><b>status</b> · gated before every invoke</div></div>
+          <div class="port"><div class="k">surface</div><div class="n">Surface</div>
+            <div class="a"><b>token door</b> · role subset</div></div>
+          <div class="port"><div class="k">evaluator</div><div class="n">Evaluator</div>
+            <div class="a"><b>where guards plug in</b>, the bus above uses them</div></div>
+        </div>
+        <p class="portnote"><b>The Evaluator port is not a fifth destination</b>, it is the plug-in
+          slot for guards. The bus that calls them wraps the door and every model / tool / memory
+          call, in and out.</p>
+      </div>
+
+      <div class="conn"><span>answer → egress gate → trace</span></div>
+
+      <div class="layer">
+        <span class="tag">observability</span>
+        <h3>Eval store + traces</h3>
+        <p>Every verdict is recorded in an append-only eval store; every step ships a span to the
+          local collector → Grafana. Monitoring <b>fails open</b>, a missing trace never blocks a
+          request; only enforcement fails closed.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- TWO TIERS -->
+  <section>
+    <h2>Two enforcement tiers, defense in depth</h2>
+    <div class="cage">
+      <div class="tiers">
+        <div class="tnode ta"><div class="lbl">caller</div><div class="nm">Agent</div>
+          <div class="ds">any code that wants the model</div></div>
+        <div class="tarr">▶</div>
+        <div class="tnode t1"><div class="lbl">tier 1 · in-process</div><div class="nm">Heart bus</div>
+          <div class="ds">fast, all four guards, but lives inside the agent, so code that skips the
+            heart skips it.</div></div>
+        <div class="tarr">▶</div>
+        <div class="tnode t2"><div class="lbl">tier 2 · out-of-process</div><div class="nm">LLM gateway</div>
+          <div class="ds">owns the only route to the model; asks Agent Control <code>:19381</code>
+            first. The choke point a compromised agent can't bypass.</div></div>
+        <div class="tarr">▶</div>
+        <div class="tnode tm"><div class="lbl">upstream</div><div class="nm">Model</div>
+          <div class="ds">qwen-heavy <code>:8012</code></div></div>
+      </div>
+      <div class="denybar"><span class="x">deny / Agent Control down →</span>
+        <span>403 at the gateway, the model is <b>never called</b>. Verified live: a benign prompt
+          forwards; a secrets-file prompt is stopped before the model.</span></div>
+      <p class="tiernote"><b>Tier 1 is fast and catches most things; tier 2 is unbypassable.</b>
+        They aren't rivals, they're the two layers. Our bus owns the decision semantics; Agent
+        Control is the out-of-process gate on the wire.</p>
+    </div>
+  </section>
+
+  <!-- JOURNEY -->
+  <section>
+    <h2>What actually happens on one "ask"</h2>
+    <div class="journey">
+      <div class="step"><div class="num">1</div><div><div class="t">Arrive at a door</div>
+        <div class="d">Token checked; no caller → denied.</div></div></div>
+      <div class="step"><div class="num">2</div><div><div class="t">Gate the request</div>
+        <div class="d">Inbound text runs the verdict bus (<code>pre</code> stage).</div></div></div>
+      <div class="step"><div class="num">3</div><div><div class="t">Recall from memory</div>
+        <div class="d">Scoped hybrid search grounds the answer.</div></div></div>
+      <div class="step"><div class="num">4</div><div><div class="t">Reason with the model</div>
+        <div class="d">qwen-heavy completes, given the notes.</div></div></div>
+      <div class="step"><div class="num">5</div><div><div class="t">Gate the answer</div>
+        <div class="d">Egress bus (<code>post</code>): a secret is blocked, not redacted-and-sent.</div></div></div>
+      <div class="step"><div class="num">6</div><div><div class="t">Return + trace</div>
+        <div class="d">Answer out; spans + verdicts recorded.</div></div></div>
+    </div>
+  </section>
+
+  <!-- WORKER LOOP -->
+  <section>
+    <h2>Delegating to a worker, the cage</h2>
+    <div class="cage">
+      <div class="cagesteps">
+        <span class="b">delegate</span><span class="ar">→</span>
+        <span class="b">organ-graph check</span><span class="ar">→</span>
+        <span class="b">gate the task</span><span class="ar">→</span>
+        <span class="b">run caged</span><span class="ar">→</span>
+        <span class="b">return + propose</span><span class="ar">→</span>
+        <span class="b">brain stores</span>
+      </div>
+      <p>A worker never holds a raw adapter. Inside the <b>cage</b> its tool calls are checked against
+        its own allowlist and the gate, its model calls pass DLP both ways, and it sees only its
+        memory slice. It returns a result <b>and proposes what it learned</b>, the brain, not the
+        worker, decides what is stored (secret-bearing learnings are refused). <b>Learning drains
+        inward:</b> the worker's private store is never the canonical home.</p>
+    </div>
+  </section>
+
+  <!-- INVARIANTS -->
+  <section>
+    <h2>The seven rules no adapter may break</h2>
+    <div class="inv">
+      <div class="rule"><div class="h">Fail closed</div><div class="b">A gate that can't decide denies. A broken guard stops the flow.</div></div>
+      <div class="rule"><div class="h">Own the data</div><div class="b">The memory ledger is ours, on-box, append-only. No external store is the source of truth.</div></div>
+      <div class="rule"><div class="h">Govern on the port</div><div class="b">Every call passes the gate at the contract boundary. Adapters never self-govern.</div></div>
+      <div class="rule"><div class="h">Tighten only</div><div class="b">Automatic actors can only make things stricter; loosening is a human act with a receipt.</div></div>
+      <div class="rule"><div class="h">Re-gate on change</div><div class="b">A scheduled or looped action is re-checked at fire time against current calibration.</div></div>
+      <div class="rule"><div class="h">Nothing lands ungoverned</div><div class="b">New models, tools, or a worker's skills pass quarantine → scan → register → sandbox.</div></div>
+      <div class="rule"><div class="h">Learning drains inward</div><div class="b">What a worker learns is proposed to the brain and stored in our ledger, or not at all.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>~/ai-body</span><span>13 modules · 6 test suites</span><span>python3 accept.py → ALL GREEN</span>
+    <span>source memory store untouched</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
