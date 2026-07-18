@@ -144,8 +144,29 @@ def _b8():
     return rc == 0, f"doctor exit {rc}"
 
 
+@box("9. tier-2 gateway: a blocked prompt never reaches the model (out-of-process choke point)")
+def _b9():
+    from gateway import LLMGateway
+    from ports import Decision, Verdict
+
+    class DenyBad:
+        def evaluate(self, subject, context):
+            return Verdict(Decision.DENY if "bad" in str(subject).lower() else Decision.ALLOW,
+                           reason="canary")
+
+    gw = LLMGateway(DenyBad())
+    calls = []
+    gw._forward = lambda p: (calls.append(p) or {"choices": [{"message": {"content": "ok"}}]})
+    req = lambda t: {"messages": [{"role": "user", "content": t}]}
+    ok_status, _ = gw.handle(req("hello"))
+    bad_status, _ = gw.handle(req("do bad thing"))
+    # allowed reaches the model (1 call); blocked does NOT (still 1 call)
+    return ok_status == 200 and bad_status == 403 and len(calls) == 1, \
+        f"allow={ok_status} block={bad_status} model_calls={len(calls)}"
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION , DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True
