@@ -2,11 +2,26 @@
 
 A governed local agent foundation: one personal AI system rebuilt as **five swappable ports
 behind a deterministic heart**, where every model call, tool call, memory write, and answer
-passes a **fail-closed gate** on the way through. Add anything later by writing one manifest ,
+passes a **fail-closed gate** on the way through. Add anything later by writing one manifest,
 the core never changes.
 
 Not a framework, not an LLM boss-agent. A small, owned coordinator that wires owned parts
 together under one set of rules.
+
+**What it proves** (for a fast read):
+
+- **Fail-closed governance, two tiers.** Every call crosses a verdict bus in-process, and the model's
+  only network route is an out-of-process gateway. If a guard can't decide, or a guard is down, the
+  answer is *deny*, never *allow*.
+- **Native modularity.** All five ports have a real second adapter, each added by one `register()` with
+  zero core edits, the whole thesis is "add a capability without touching the middle."
+- **Owned, portable memory.** An append-only ledger with hybrid recall, migrated with a parity gate and
+  a proven, reversible cutover, no external store is ever the source of truth.
+- **Governed autonomy.** Two caged workers (read-only researcher + write-capable coder) run behind
+  per-worker tool allowlists, deny-by-default delegation, and learning that only flows inward.
+
+**60-second look:** `python3 accept.py` runs all 15 definition-of-done checks and prints a green board;
+the [live architecture page](https://siddiqitaha.github.io/ai-body/) is the visual. Details below.
 
 ```mermaid
 flowchart TD
@@ -26,7 +41,7 @@ flowchart TD
     BUS -->|"if allowed"| H["THE HEART<br/>registry · organ-graph · router · one door"]
     H -->|"gate each call"| P
 
-    subgraph P["PORTS  ·  one adapter each"]
+    subgraph P["PORTS  ·  swappable adapters"]
       direction LR
       M["Model"]:::port
       MEM["Memory"]:::port
