@@ -87,7 +87,9 @@ class LedgerMemory(MemoryPort):
     (The real brain ledger is migrated in at Phase 3 via the parity gate; this proves the port.)"""
 
     def __init__(self, path: str = ":memory:") -> None:
-        self.db = sqlite3.connect(path)
+        # check_same_thread=False: a network door (HTTPSurface) serves on a different thread than
+        # the one that built the heart. The HTTP server is single-threaded, so access stays serialized.
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS notes("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, scope TEXT, "
@@ -172,6 +174,58 @@ class LocalSurface(SurfacePort):
         if request.get("token") != self._token:   # unauthenticated -> reject at the door
             return {"ok": False, "error": "bad token"}
         return self._handler(request, principal)
+
+
+class HTTPSurface(SurfacePort):
+    """A second door, over the network, beside the in-process token door. SAME fail-closed contract:
+    auth = a Bearer token (no keyless mode), principal from the `X-Principal` header and NEVER
+    defaulted to admin (a missing principal -> the heart denies). Every request funnels into the
+    same `heart.handle`, so the gate, tier routing, and audit are identical to the local door.
+    Adding it is one register() on the Surface port, zero core edits. stdlib only."""
+
+    def __init__(self, handler: Callable[[dict, str | None], dict], token: str) -> None:
+        self._handler, self._token = handler, token
+
+    def receive(self, request: dict, principal: str | None) -> dict:
+        if request.get("token") != self._token:   # single source of auth (fed from the Bearer header)
+            return {"ok": False, "error": "bad token"}
+        return self._handler(request, principal)
+
+    def serve(self, host: str = "127.0.0.1", port: int = 0):
+        """Bind an HTTP server mapping `POST /` -> receive(). Returns (server, actual_port);
+        run server.serve_forever() (e.g. in a thread), server.shutdown() to stop."""
+        import http.server
+        door = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):   # keep the test/console output quiet
+                pass
+
+            def _json(self, code: int, obj: dict) -> None:
+                data = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self):
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                    if not isinstance(body, dict):
+                        raise ValueError
+                except Exception:
+                    return self._json(400, {"ok": False, "error": "bad json"})
+                auth = self.headers.get("Authorization", "")
+                body["token"] = auth[7:] if auth.startswith("Bearer ") else ""  # bearer -> receive() checks it
+                principal = self.headers.get("X-Principal")                     # may be None -> heart denies
+                out = door.receive(body, principal)
+                code = 200 if body["token"] == door._token else 401            # bad token -> 401, never runs
+                self._json(code, out)
+
+        srv = http.server.HTTPServer((host, port), H)
+        return srv, srv.server_address[1]
 
 
 # --- Evaluator: the LIVE Agent Control server as an evaluator behind the port ----

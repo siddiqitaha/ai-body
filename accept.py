@@ -219,8 +219,48 @@ def _b11():
         f"local={stays_local} offload={offloads} failclosed={failclosed} adapter_guard={adapter_guard}"
 
 
+@box("12. second surface: an HTTP door funnels into the same gated heart (bad token -> 401)")
+def _b12():
+    import json as _json
+    import threading
+    import urllib.error
+    import urllib.request
+
+    from adapters import HTTPSurface
+    heart, reg, _, _ = _stack()
+    door = HTTPSurface(heart.handle, "http-tok")
+    srv, port = door.serve(port=0)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+
+    def call(token, principal, text):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/",
+                                     data=_json.dumps({"intent": "remember", "text": text}).encode(),
+                                     method="POST")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        if principal:
+            req.add_header("X-Principal", principal)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, _json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            return e.code, _json.loads(e.read().decode() or "{}")
+
+    try:
+        good_code, good = call("http-tok", "taha", "a fact over http")
+        bad_code, _ = call("nope", "taha", "x")                     # bad token -> 401
+        noprin_code, noprin = call("http-tok", None, "x")           # missing principal -> denied
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    ok = (good_code == 200 and good.get("ok") and bad_code == 401
+          and noprin_code == 200 and noprin.get("ok") is False)
+    return ok, f"good={good_code} bad_token={bad_code} no_principal={noprin_code}"
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11, _b12]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True

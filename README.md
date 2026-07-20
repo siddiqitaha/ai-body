@@ -93,7 +93,7 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 | **Model** | `complete` / `embed` / `capabilities` | `LocalModel` (local tier) + optional `CloudModel` (cloud tier) | tier-aware routing: private-by-default → local; only non-sensitive may offload; DLP scrub on egress, never send raw |
 | **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory`, notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
 | **Tool** | `list` / `invoke` | `status` + `repo_ls`, admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
-| **Surface** | `receive` | `LocalSurface` (token door) | door auth, role subset, missing principal → deny |
+| **Surface** | `receive` | `LocalSurface` (in-process token door) + `HTTPSurface` (network door) | Bearer auth, principal via header (never defaulted), missing principal → deny |
 | **Evaluator** | `evaluate → Verdict{deny,steer,warn,log,allow}` | the verdict bus (four guards, below) | tighten-only; enforcement error → deny |
 | *(Worker)* | `run(task, cage)` | `ResearcherWorker` (caged) | runs inside the cage; learning drains inward |
 
@@ -110,11 +110,11 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 11 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 12 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
-# the unit suites (70 tests, offline)
-for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10; do
+# the unit suites (78 tests, offline)
+for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10 test_phase11; do
   python3 $t.py; done
 
 # the governed walk through the live Agent Control server (needs AC keys in env)
@@ -145,12 +145,13 @@ delegation, and `doctor`. All green = proven.
 | `cutover.py` | shadow dual-write + rollback (the strangler-fig cutover mechanism) |
 | `acquire.py` | the acquire funnel (invariant 6): quarantine → scan → fingerprint → sandbox; `build_toolbox()` arms the live tool port |
 | `router.py` | tier-aware model routing: private-by-default → local, non-sensitive may offload to cloud, fail-closed |
+| `serve.py` | run the governed stack over HTTP (the `HTTPSurface` network door) |
 | `observ.py` | the eval store (verdicts) + OTLP trace export (fails open) |
 | `doctor.py` | enumerates every guard, fails nonzero if none is provably live |
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
 | `phase1.py` | wires the governed stack; `build_governed()` |
 | `accept.py` | the one-command definition-of-done gate |
-| `test_*.py` | 11 suites, 70 tests |
+| `test_*.py` | 12 suites, 78 tests |
 
 ---
 
@@ -167,9 +168,13 @@ delegation, and `doctor`. All green = proven.
   a cloud tier; a sensitive call with no local model is refused, never leaked. The `CloudModel`
   adapter adds a second line, refusing secret-bearing input outright. Adding the cloud row is one
   `register()`, and an untagged single-model fleet behaves exactly as before.
+- **Second surface (network door).** `HTTPSurface` makes the governed stack callable over HTTP with
+  the same fail-closed contract as the local door (Bearer auth, principal via `X-Principal`, missing
+  principal denied, bad token 401 before the heart is reached). `python3 serve.py` runs it. All five
+  ports now have two adapters or a proven second-adapter path, the modularity claim holds on each.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
   (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 70/70 unit + `accept.py` 11/11 green.
+- **Tests:** 78/78 unit + `accept.py` 12/12 green.
 
 ### Waiting on a human (each a single step)
 

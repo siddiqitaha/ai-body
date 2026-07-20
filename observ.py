@@ -16,7 +16,7 @@ class EvalStore:
     """Append-only verdict log. This is the 'eval store records verdicts' definition-of-done item."""
 
     def __init__(self, path: str = ":memory:") -> None:
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, check_same_thread=False)  # usable from a network door's thread
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS verdicts("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, stage TEXT, principal TEXT, evaluator TEXT, "

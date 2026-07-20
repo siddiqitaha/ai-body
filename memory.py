@@ -52,7 +52,9 @@ class BrainMemory(MemoryPort):
     """
 
     def __init__(self, path: str = ":memory:", embed_on_write: bool = True) -> None:
-        self.db = sqlite3.connect(path)
+        # check_same_thread=False so a network door (HTTPSurface) can serve on a worker thread;
+        # the reference HTTP server is single-threaded, so access to this connection stays serialized.
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.embed_on_write = embed_on_write
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS notes(
