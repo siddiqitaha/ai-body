@@ -118,7 +118,11 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 may only tighten, and any guard that errors on an enforcement path is treated as `deny`:
 
 - `agent-control`, the live Agent Control server on `:19381` (fail-closed)
-- `local-scanner` , a local safety scanner on `:18970` (fail-closed; needs `SCANNER_GATEWAY_TOKEN` to go live)
+- `local-scanner`, a local safety scanner on `:18970` (fail-closed). **A token alone is not enough**: the
+  reference scanner authenticates by source/path, so a plain host process gets 401/403 whatever token it
+  sends, and arming this adapter from the host denies every call. The working route is to attach the
+  scanner as a control on the control plane, so `agent-control` below returns a verdict that already
+  carries the scanner's (measured live, see the adapter docstring)
 - `guard-model`, a local model judging SAFE/UNSAFE (a `judge` can be injected, e.g. DefenseClaw). **Calibrated**: Se 1.0 / Sp 1.0 on 55 labeled cases (`calibration_set.py`), so `enforce` mode (blocking) is authorized; ships in `observe` by default. Enforce is proven offline: UNSAFE → deny, SAFE → allow, a judge error fails closed
 - `ref-dlp`, a deterministic secret-marker scan
 
@@ -213,7 +217,8 @@ delegation, and `doctor`. All green = proven.
 ### Waiting on a human (each a single step)
 
 - Label 50-100 real cases → `calibrate.py` promotes the guard model from observe to blocking.
-- Provide `SCANNER_GATEWAY_TOKEN` → the LocalScanner guard goes live.
+- Attach your scanner as a control on the control plane → its verdict rides in through `agent-control`
+  (a `SCANNER_GATEWAY_TOKEN` alone will not arm the direct adapter, see the note above).
 - Flip the live source-daemon when chosen → the cutover mechanism is proven and reversible (above).
 
 From here the AI Body grows by adding the next worker, tool, model, or surface, one adapter at a time.

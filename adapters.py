@@ -444,7 +444,16 @@ class LocalScannerEvaluator(EvaluatorPort):
     wanted). POSTs :18970/api/v1/inspect/tool {content}; action=='block' -> DENY. FAILS CLOSED:
     no token, gateway down, timeout, or unknown action all -> DENY on an enforcement path. The
     bearer token is read from env on the server side (SCANNER_GATEWAY_TOKEN), never hardcoded.
-    Live activation = provide that env var; without it this denies (fail-closed by design)."""
+
+    MEASURED LIMITATION (verified live, not theory): a token is NOT sufficient. The reference
+    scanner authenticates by SOURCE/PATH, not by bearer alone, so a plain host process calling this
+    endpoint gets 401/403 no matter which token it presents. Arming this adapter from the host
+    therefore denies every call, which is fail-closed behaving correctly but useless in practice.
+
+    The route that works is to let the control plane carry the scanner's verdict: register the
+    scanner as a control on the Agent Control server and attach it to your agent, then `ACEvaluator`
+    below returns a verdict that already includes the scanner's. Prefer that unless your scanner
+    accepts host-origin calls."""
 
     name = "local-scanner"
 

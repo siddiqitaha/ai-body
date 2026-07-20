@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 source-memory.db
 _scratch/            # the CoderWorker's confined write sandbox (governed artifacts, not source)
+brain_bridge.py       # private crossover wiring to the real brain, not part of the public foundation
+crossover.py          # private crossover runner (live guards + real brain), not part of the public foundation
