@@ -162,6 +162,36 @@ def repo_ls(args: dict, caller: str) -> dict:
             "entries": sorted(os.listdir(target)), "caller": caller}
 
 
+# --- Tool reference #3: a governed WRITE, the coder specialist's capability ------
+# The running fleet's coder has read/write/edit/exec; here the write is confined to a sandbox root,
+# every call passes the DLP gate (a secret in the content is refused), the tool is fingerprint-
+# admitted, and there is deliberately NO exec. Capability only ever arrives behind cage + gate + funnel.
+REPO_WRITE_SPEC = "repo_write@v1: write text to a file under the sandbox root; path-escape denied; no exec"
+
+
+def _write_root() -> str:
+    """The confined write sandbox, read at call time so it is configurable (env) and testable."""
+    return os.path.realpath(os.environ.get("AIBODY_WRITE_ROOT", os.path.join(_REPO_ROOT, "_scratch")))
+
+
+def repo_write(args: dict, caller: str) -> dict:
+    """Write text to <sandbox>/<path>. Escaping the sandbox root -> deny; content is text only."""
+    rel = str(args.get("path", "")).strip()
+    content = args.get("content", "")
+    if not rel:
+        raise ValueError("repo_write: path required")
+    if not isinstance(content, str):
+        raise TypeError("repo_write: content must be text")
+    root = _write_root()
+    target = os.path.realpath(os.path.join(root, rel))
+    if target != root and not target.startswith(root + os.sep):
+        raise PermissionError(f"repo_write: path {rel!r} escapes the sandbox root")
+    os.makedirs(os.path.dirname(target) or root, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as f:
+        n = f.write(content)
+    return {"tool": "repo_write", "path": rel, "bytes": n, "caller": caller}
+
+
 # --- Surface reference: a local in-process door funnelling into the one door ----
 class LocalSurface(SurfacePort):
     """The reference door (like the MCP door Claude Code already uses). Auth = a shared token,
@@ -382,6 +412,30 @@ class ResearcherWorker(WorkerPort):
         answer = cage.think(prompt)                         # model call, DLP-gated both ways
         cage.propose(f"researcher handled task '{task[:60]}': {answer[:120]}")
         return {"result": answer, "tool_ok": status.get("ok", False), "used_prior": len(prior)}
+
+
+# --- Worker reference #2: a caged "coder" that can WRITE (governed) --------------
+class CoderWorker(WorkerPort):
+    """The second specialist, matching the running fleet's coder (researcher + coder). It READS the
+    repo and WRITES an artifact, but every write is confined to the sandbox root, passes the DLP gate
+    (a secret in the content is refused), and runs through the fingerprint-admitted `repo_write` tool.
+    It has NO exec and no tool outside its manifest allowlist. Better-by-default: the extra power lands
+    only behind the cage + gate + funnel, and its learning still drains inward."""
+
+    id = "coder"
+
+    def run(self, task: str, cage) -> dict:
+        prior = cage.recall(task, k=3)
+        listing = cage.use_tool("repo_ls", {})              # read: what exists (allowlisted)
+        plan = cage.think(f"Task: {task}\n"
+                          f"Files: {listing.get('entries', [])[:20]}\n"
+                          f"Known notes: {[p['text'] for p in prior]}\n"
+                          f"Reply with ONE short line: what you would change.")
+        # write the plan as a governed artifact into the confined sandbox
+        wrote = cage.use_tool("repo_write", {"path": "coder-notes.md",
+                                             "content": f"# {task[:60]}\n\n{plan}\n"})
+        cage.propose(f"coder handled '{task[:60]}': wrote {wrote['path']} ({wrote['bytes']} bytes)")
+        return {"result": {"plan": plan, "wrote": wrote}, "tool_ok": True, "used_prior": len(prior)}
 
 
 # --- Evaluator: the REAL LocalScanner local scanner as the probabilistic guard ---

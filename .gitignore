@@ -6,3 +6,4 @@ calibration-receipt.json
 __pycache__/
 *.pyc
 source-memory.db
+_scratch/            # the CoderWorker's confined write sandbox (governed artifacts, not source)

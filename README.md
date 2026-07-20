@@ -97,7 +97,7 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 | **Tool** | `list` / `invoke` | `status` + `repo_ls`, admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
 | **Surface** | `receive` | `LocalSurface` (in-process token door) + `HTTPSurface` (network door) | Bearer auth, principal via header (never defaulted), missing principal → deny |
 | **Evaluator** | `evaluate → Verdict{deny,steer,warn,log,allow}` | the verdict bus (four guards, below) | tighten-only; enforcement error → deny |
-| *(Worker)* | `run(task, cage)` | `ResearcherWorker` (caged) | runs inside the cage; learning drains inward |
+| *(Worker)* | `run(task, cage)` | `ResearcherWorker` (read-only) + `CoderWorker` (governed write, no exec) | per-worker tool allowlist (the cage), delegation deny-by-default, learning drains inward |
 
 **The verdict bus**, four guards, each returns one of five decisions; the worst wins, evaluators
 may only tighten, and any guard that errors on an enforcement path is treated as `deny`:
@@ -112,11 +112,11 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 13 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 14 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
-# the unit suites (87 tests, offline)
-for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10 test_phase11 test_phase12; do
+# the unit suites (93 tests, offline)
+for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10 test_phase11 test_phase12 test_phase13; do
   python3 $t.py; done
 
 # the governed walk through the live Agent Control server (needs AC keys in env)
@@ -153,7 +153,7 @@ delegation, and `doctor`. All green = proven.
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
 | `phase1.py` | wires the governed stack; `build_governed()` |
 | `accept.py` | the one-command definition-of-done gate |
-| `test_*.py` | 13 suites, 87 tests |
+| `test_*.py` | 14 suites, 93 tests |
 
 ---
 
@@ -178,9 +178,15 @@ delegation, and `doctor`. All green = proven.
   in `enforce` (tier-1 bus blocks UNSAFE) AND the model routed through the tier-2 gateway (out-of-process
   choke point), via `AIBODY_GUARD_MODE` and `AIBODY_MODEL_BASE`. The guard model takes a pluggable
   `judge`, so DefenseClaw or any other judge can back it.
+- **Two real caged workers.** A `researcher` (read-only: recall + `repo_ls`) and a `coder` (reads, plus
+  a governed `repo_write` confined to a sandbox, every write DLP-gated and fingerprint-admitted, and
+  no exec). Each worker has its own tool allowlist enforced by the cage, only the heart may call them
+  (delegation is deny-by-default, so workers cannot call each other), and both drain learning inward.
+  `build_governed(with_workers=True)` registers them. This mirrors the running multi-agent fleet
+  (researcher + coder) and tightens it: capability arrives only behind the cage, the gate, and the funnel.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
   (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 87/87 unit + `accept.py` 13/13 green.
+- **Tests:** 93/93 unit + `accept.py` 14/14 green.
 
 ### Waiting on a human (each a single step)
 

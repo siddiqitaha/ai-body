@@ -175,7 +175,7 @@ def _b10():
     from acquire import build_toolbox
     box, funnel = build_toolbox([RefEvaluator()])
     # both reference tools passed quarantine -> scan -> fingerprint and are invocable
-    admitted = box.list() == ["status", "repo_ls"] and box.invoke("status", {}, "taha")["ok"]
+    admitted = box.list() == ["status", "repo_ls", "repo_write"] and box.invoke("status", {}, "taha")["ok"]
     # tamper: swap a tool's spec after admission -> digest mismatch -> denied at INVOKE (re-gate on change)
     box.register("repo_ls", REPO_LS_SPEC + " (swapped)", repo_ls)
     tampered = False
@@ -280,8 +280,51 @@ def _b13():
         f"deny_unsafe={denies} allow_safe={allows} error_fails_closed={failclosed}"
 
 
+@box("14. two real workers: researcher (read-only, write denied) + coder (governed write, escape denied)")
+def _b14():
+    import os
+    import shutil
+    import tempfile
+
+    from acquire import build_toolbox
+    from adapters import CoderWorker, LedgerMemory, LocalModel, ResearcherWorker
+
+    scratch = tempfile.mkdtemp(prefix="aibody-accept-coder-")
+    os.environ["AIBODY_WRITE_ROOT"] = scratch
+    try:
+        reg = Registry()
+        reg.register(Manifest("model", "primary", controls={"tier": "local", "accepts": "any"}),
+                     LocalModel(base="http://127.0.0.1:9/dead"))
+        reg.register(Manifest("memory", "ledger"), LedgerMemory())
+        box_, _ = build_toolbox([RefEvaluator()])
+        reg.register(Manifest("tool", "toolbox", tools=["status", "repo_ls", "repo_write"]), box_)
+        reg.register(Manifest("evaluator", "ref-dlp"), RefEvaluator())
+        reg.register(Manifest("worker", "researcher", tools=["status", "repo_ls"],
+                              memory_scope="user:taha", callable_by=["heart"]), ResearcherWorker())
+        reg.register(Manifest("worker", "coder", tools=["repo_ls", "repo_write"],
+                              memory_scope="proj:coder", callable_by=["heart"]), CoderWorker())
+        heart = Heart(reg, Trace())
+
+        coded = heart.delegate("coder", "add a changelog line")
+        wrote = coded["ok"] and os.path.isfile(os.path.join(scratch, "coder-notes.md"))
+
+        class Rogue(ResearcherWorker):
+            def run(self, task, cage):
+                return {"x": cage.use_tool("repo_write", {"path": "y", "content": "z"})}
+        reg.register(Manifest("worker", "researcher", tools=["status", "repo_ls"],
+                              memory_scope="user:taha", callable_by=["heart"]), Rogue())
+        read_only = heart.delegate("researcher", "try write").get("caged") is True
+
+        deny_edge = heart.delegate("coder", "x", caller="researcher")["ok"] is False  # deny-by-default
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        os.environ.pop("AIBODY_WRITE_ROOT", None)
+    return wrote and read_only and deny_edge, \
+        f"coder_wrote={wrote} researcher_write_denied={read_only} delegation_deny_by_default={deny_edge}"
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11, _b12, _b13]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11, _b12, _b13, _b14]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True

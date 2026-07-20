@@ -28,7 +28,7 @@ def _stack():
 
 def test_live_toolport_is_funnel_gated():
     _, _, box, _ = _stack()
-    assert box.list() == ["status", "repo_ls"]            # both passed the funnel
+    assert box.list() == ["status", "repo_ls", "repo_write"]   # all passed the funnel
     assert box.invoke("status", {}, "taha")["ok"]
 
 

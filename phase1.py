@@ -19,11 +19,13 @@ from acquire import build_toolbox
 from adapters import (
     ACEvaluator,
     CloudModel,
+    CoderWorker,
     GuardModelEvaluator,
     LedgerMemory,
     LocalModel,
     LocalSurface,
     RefEvaluator,
+    ResearcherWorker,
 )
 from heart import Heart, Registry, Trace
 from manifest import Manifest
@@ -84,7 +86,8 @@ def setup_ac() -> None:
 
 
 def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mode: str = "observe",
-                   with_cloud: bool = False, model_base: str | None = None, guard_judge=None):
+                   with_cloud: bool = False, model_base: str | None = None, guard_judge=None,
+                   with_workers: bool = False):
     """Wire the governed stack. real_memory=True uses the rebuilt BrainMemory core (FTS+vector+RRF,
     scan-on-write); False falls back to the toy LedgerMemory. The source memory store is never touched.
 
@@ -107,7 +110,7 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mo
     ledger = BrainMemory(db_path) if real_memory else LedgerMemory(db_path)
     reg.register(Manifest("memory", "ledger"), ledger)
     toolbox, _funnel = build_toolbox([RefEvaluator()])   # invariant 6 armed: funnel-gated tool port
-    reg.register(Manifest("tool", "toolbox", tools=["status", "repo_ls"]), toolbox)
+    reg.register(Manifest("tool", "toolbox", tools=["status", "repo_ls", "repo_write"]), toolbox)
     reg.register(Manifest("evaluator", "ref-dlp"), RefEvaluator())
     reg.register(Manifest("evaluator", "agent-control"),
                  ACEvaluator(AC_BASE, AIBODY_AGENT))  # the LIVE control plane, fail-closed
@@ -116,7 +119,20 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mo
     heart = Heart(reg, trace, eval_store=store)
     door = LocalSurface(heart.handle, DOOR_TOKEN)
     reg.register(Manifest("surface", "local-door"), door)
+    if with_workers:
+        register_reference_workers(reg)
     return heart, door, reg, store, trace
+
+
+def register_reference_workers(reg) -> None:
+    """Register the two caged specialists, matching the running fleet's researcher + coder.
+    Per-worker tool allowlists (the cage) are the fence: the researcher is read-only, the coder may
+    write, neither may reach a tool outside its manifest, and only the heart may call either (the
+    organ-graph edge is deny-by-default, so workers cannot delegate to each other)."""
+    reg.register(Manifest("worker", "researcher", tools=["status", "repo_ls"],
+                          memory_scope="user:taha", callable_by=["heart"]), ResearcherWorker())
+    reg.register(Manifest("worker", "coder", tools=["repo_ls", "repo_write"],
+                          memory_scope="proj:coder", callable_by=["heart"]), CoderWorker())
 
 
 def _req(intent, text, **x):

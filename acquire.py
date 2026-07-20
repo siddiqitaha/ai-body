@@ -97,7 +97,8 @@ def build_toolbox(evaluators):
     `box.register(name, spec, fn)`. That is the native-modularity contract for the Tool port,
     the heart and the port contracts never change.
     """
-    from adapters import REPO_LS_SPEC, STATUS_SPEC, StatusTool, repo_ls
+    from adapters import (REPO_LS_SPEC, REPO_WRITE_SPEC, STATUS_SPEC, StatusTool,
+                          repo_ls, repo_write)
     funnel = AcquireFunnel(evaluators=list(evaluators))
     box = GovernedTools(funnel)
 
@@ -107,4 +108,7 @@ def build_toolbox(evaluators):
 
     funnel.admit("repo_ls", REPO_LS_SPEC)
     box.register("repo_ls", REPO_LS_SPEC, repo_ls)
+
+    funnel.admit("repo_write", REPO_WRITE_SPEC)   # the coder's write, still per-worker gated by the cage
+    box.register("repo_write", REPO_WRITE_SPEC, repo_write)
     return box, funnel
