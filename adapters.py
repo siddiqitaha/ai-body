@@ -57,6 +57,30 @@ class LocalModel(ModelPort):
                 "tools": False, "json": True, "cost": 0.0, "local": True}
 
 
+class CloudModel(LocalModel):
+    """A second model row on the cloud tier: cheaper/bigger, but it must NEVER see private data.
+    Routing (router.py) keeps sensitive calls off this tier; the adapter adds a second, independent
+    line of defense, it refuses outright if a secret marker slips into its input (private never leaves).
+    Same port, so adding it is one register() call."""
+
+    MARKERS = ("BEGIN RSA PRIVATE KEY", "aws_secret_access_key", "SECRET_MARKER")
+
+    def __init__(self, base: str = "http://127.0.0.1:8080/v1", model: str = "cloud-large",
+                 timeout_s: float = 60.0) -> None:
+        super().__init__(base=base, model=model, timeout_s=timeout_s)
+
+    def complete(self, messages: list[dict], schema: dict | None = None) -> str:
+        blob = " ".join(m.get("content", "") for m in messages).lower()
+        for mk in self.MARKERS:                       # belt-and-suspenders: private data never leaves
+            if mk.lower() in blob:
+                raise PermissionError(f"cloud tier refused: secret marker {mk!r} must stay local")
+        return super().complete(messages, schema)
+
+    def capabilities(self) -> dict:
+        return {"id": self.model, "endpoint": self.base, "context": 131072,
+                "tools": False, "json": True, "cost": 0.5, "local": False}
+
+
 # --- Memory reference: an append-only SQLite notes ledger -----------------------
 class LedgerMemory(MemoryPort):
     """Append-only; correct=supersede, forget=invalidate; nothing destroyed. Per-scope filter.

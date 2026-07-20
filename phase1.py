@@ -18,6 +18,7 @@ import urllib.request
 from acquire import build_toolbox
 from adapters import (
     ACEvaluator,
+    CloudModel,
     GuardModelEvaluator,
     LedgerMemory,
     LocalModel,
@@ -82,7 +83,8 @@ def setup_ac() -> None:
         print(f"attach control {cid} -> {s}")
 
 
-def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mode: str = "observe"):
+def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mode: str = "observe",
+                   with_cloud: bool = False):
     """Wire the governed stack. real_memory=True uses the rebuilt BrainMemory core (FTS+vector+RRF,
     scan-on-write); False falls back to the toy LedgerMemory. The source memory store is never touched.
 
@@ -91,7 +93,11 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mo
     1.0 on 55 cases). Enforce calls the local model on every gate, so it needs a live model endpoint."""
     from memory import BrainMemory
     trace, reg, store = Trace(), Registry(), EvalStore(db_path)
-    reg.register(Manifest("model", "primary"), LocalModel())
+    reg.register(Manifest("model", "primary", controls={"tier": "local", "accepts": "any"}),
+                 LocalModel())
+    if with_cloud:   # opt-in second tier: offloads only NON-sensitive calls (router + adapter enforce)
+        reg.register(Manifest("model", "cloud", controls={"tier": "cloud", "accepts": "non-sensitive"}),
+                     CloudModel())
     ledger = BrainMemory(db_path) if real_memory else LedgerMemory(db_path)
     reg.register(Manifest("memory", "ledger"), ledger)
     toolbox, _funnel = build_toolbox([RefEvaluator()])   # invariant 6 armed: funnel-gated tool port

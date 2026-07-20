@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 
 from manifest import Manifest
+from router import choose_model
 from ports import (
     Decision,
     EvaluatorPort,
@@ -103,7 +104,7 @@ class Cage:
         v = h._gate(prompt, {"stage": "pre", "principal": self.worker_id})
         if v.blocks:
             raise PermissionError(f"gate blocked model input: {v.reason}")
-        model = h.reg.models.get("primary")
+        model = h._pick_model(sensitive=True)   # a worker's context is internal -> local tier
         answer = model.complete([{"role": "user", "content": prompt}])
         vo = h._gate(answer, {"stage": "post", "principal": self.worker_id})  # egress gate
         if vo.blocks:
@@ -127,6 +128,16 @@ class Heart:
         self.reg = registry
         self.trace = trace or Trace()
         self.eval_store = eval_store  # optional: records every verdict (observ.EvalStore)
+
+    # --- routing: pick a model by tier + sensitivity (private-by-default) ---------
+    def _pick_model(self, *, sensitive: bool):
+        """Choose the model row for this call. Untagged fleet -> `primary` (unchanged). Tagged
+        fleet -> router policy: sensitive stays local, non-sensitive may offload to the cloud tier.
+        A sensitive call with no local-tier model raises RouteDenied (fail-closed, never leaks)."""
+        mans = {mid: self.reg.manifests[mid] for mid in self.reg.models}
+        mid = choose_model(mans, sensitive=sensitive)
+        self.trace.span("route.model", chosen=mid, sensitive=sensitive)
+        return self.reg.models.get(mid)
 
     # --- the verdict bus: run enforcement evaluators, fail CLOSED -----------------
     def _gate(self, subject, context: dict) -> Verdict:
@@ -227,9 +238,10 @@ class Heart:
             self.trace.span("memory.recall", hits=len(hits))
             return {"ok": True, "hits": hits}
 
-        # default: answer with the model, grounded in a memory recall (the end-to-end walk)
+        # default: answer with the model, grounded in a memory recall (the end-to-end walk).
+        # private-by-default: the call is treated as sensitive unless the request opts out.
         mem = self.reg.memories.get("ledger")
-        model = self.reg.models.get("primary")
+        model = self._pick_model(sensitive=request.get("sensitive", True))
         context_notes = mem.recall(text, k=3, scope=f"user:{principal}")
         self.trace.span("memory.recall", hits=len(context_notes))
         msgs = [

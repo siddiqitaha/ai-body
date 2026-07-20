@@ -193,8 +193,34 @@ def _b10():
         f"admitted={admitted} tamper_denied={tampered} unadmitted_denied={unadmitted}"
 
 
+@box("11. model routing: a sensitive call stays local; only non-sensitive may reach the cloud tier")
+def _b11():
+    from adapters import CloudModel
+    from router import RouteDenied, choose_model
+    local = Manifest("model", "primary", controls={"tier": "local", "accepts": "any"})
+    cloud = Manifest("model", "cloud", controls={"tier": "cloud", "accepts": "non-sensitive"})
+    fleet = {"primary": local, "cloud": cloud}
+    stays_local = choose_model(fleet, sensitive=True) == "primary"
+    offloads = choose_model(fleet, sensitive=False) == "cloud"
+    # fail-closed: sensitive data with only a cloud tier is refused, never leaked
+    failclosed = False
+    try:
+        choose_model({"cloud": cloud}, sensitive=True)
+    except RouteDenied:
+        failclosed = True
+    # adapter second line: the cloud tier itself refuses secret-bearing input
+    adapter_guard = False
+    try:
+        CloudModel(base="http://127.0.0.1:9/dead").complete(
+            [{"role": "user", "content": "aws_secret_access_key=AKIA"}])
+    except PermissionError:
+        adapter_guard = True
+    return stays_local and offloads and failclosed and adapter_guard, \
+        f"local={stays_local} offload={offloads} failclosed={failclosed} adapter_guard={adapter_guard}"
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True

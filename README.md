@@ -90,7 +90,7 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 
 | Port | Contract | Reference adapter today | Governance on the port |
 |---|---|---|---|
-| **Model** | `complete` / `embed` / `capabilities` | `LocalModel` → qwen-heavy `:8012` | DLP scrub on egress; degrade, never send raw |
+| **Model** | `complete` / `embed` / `capabilities` | `LocalModel` (local tier) + optional `CloudModel` (cloud tier) | tier-aware routing: private-by-default → local; only non-sensitive may offload; DLP scrub on egress, never send raw |
 | **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory`, notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
 | **Tool** | `list` / `invoke` | `status` + `repo_ls`, admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
 | **Surface** | `receive` | `LocalSurface` (token door) | door auth, role subset, missing principal → deny |
@@ -110,11 +110,11 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 10 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 11 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
-# the unit suites (61 tests, offline)
-for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9; do
+# the unit suites (70 tests, offline)
+for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10; do
   python3 $t.py; done
 
 # the governed walk through the live Agent Control server (needs AC keys in env)
@@ -144,12 +144,13 @@ delegation, and `doctor`. All green = proven.
 | `parity_harness.py` | the honest old-vs-new recall comparison |
 | `cutover.py` | shadow dual-write + rollback (the strangler-fig cutover mechanism) |
 | `acquire.py` | the acquire funnel (invariant 6): quarantine → scan → fingerprint → sandbox; `build_toolbox()` arms the live tool port |
+| `router.py` | tier-aware model routing: private-by-default → local, non-sensitive may offload to cloud, fail-closed |
 | `observ.py` | the eval store (verdicts) + OTLP trace export (fails open) |
 | `doctor.py` | enumerates every guard, fails nonzero if none is provably live |
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
 | `phase1.py` | wires the governed stack; `build_governed()` |
 | `accept.py` | the one-command definition-of-done gate |
-| `test_*.py` | 10 suites, 61 tests |
+| `test_*.py` | 11 suites, 70 tests |
 
 ---
 
@@ -161,9 +162,14 @@ delegation, and `doctor`. All green = proven.
   quarantined → scanned → fingerprinted before it can run, and the digest is re-checked at invoke
   (a swap after admission is denied). Second real tool `repo_ls` was added the one-adapter way
   (`admit` + `register`), zero core edits, proving the modularity contract on the Tool port.
+- **Tier-aware model routing.** The heart routes each model call by tier: private-by-default, so a
+  call stays on the local tier unless the request opts out; only non-sensitive calls may offload to
+  a cloud tier; a sensitive call with no local model is refused, never leaked. The `CloudModel`
+  adapter adds a second line, refusing secret-bearing input outright. Adding the cloud row is one
+  `register()`, and an untagged single-model fleet behaves exactly as before.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
   (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 61/61 unit + `accept.py` 10/10 green.
+- **Tests:** 70/70 unit + `accept.py` 11/11 green.
 
 ### Waiting on a human (each a single step)
 
