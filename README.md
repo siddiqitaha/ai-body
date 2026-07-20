@@ -92,7 +92,7 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 |---|---|---|---|
 | **Model** | `complete` / `embed` / `capabilities` | `LocalModel` → qwen-heavy `:8012` | DLP scrub on egress; degrade, never send raw |
 | **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory`, notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
-| **Tool** | `list` / `invoke` | `StatusTool` (one safe read-only tool) | fail-closed gate before every invoke; unknown → deny |
+| **Tool** | `list` / `invoke` | `status` + `repo_ls`, admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
 | **Surface** | `receive` | `LocalSurface` (token door) | door auth, role subset, missing principal → deny |
 | **Evaluator** | `evaluate → Verdict{deny,steer,warn,log,allow}` | the verdict bus (four guards, below) | tighten-only; enforcement error → deny |
 | *(Worker)* | `run(task, cage)` | `ResearcherWorker` (caged) | runs inside the cage; learning drains inward |
@@ -110,11 +110,11 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 8 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 10 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
-# the unit suites (44 tests, offline)
-for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6; do
+# the unit suites (61 tests, offline)
+for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9; do
   python3 $t.py; done
 
 # the governed walk through the live Agent Control server (needs AC keys in env)
@@ -143,12 +143,13 @@ delegation, and `doctor`. All green = proven.
 | `migrate.py` | memory migration with the parity gate (read-only toward the source memory store) |
 | `parity_harness.py` | the honest old-vs-new recall comparison |
 | `cutover.py` | shadow dual-write + rollback (the strangler-fig cutover mechanism) |
+| `acquire.py` | the acquire funnel (invariant 6): quarantine → scan → fingerprint → sandbox; `build_toolbox()` arms the live tool port |
 | `observ.py` | the eval store (verdicts) + OTLP trace export (fails open) |
 | `doctor.py` | enumerates every guard, fails nonzero if none is provably live |
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
 | `phase1.py` | wires the governed stack; `build_governed()` |
 | `accept.py` | the one-command definition-of-done gate |
-| `test_*.py` | 6 suites, 44 tests |
+| `test_*.py` | 10 suites, 61 tests |
 
 ---
 
@@ -156,9 +157,13 @@ delegation, and `doctor`. All green = proven.
 
 - **Foundation feature-complete.** All five ports have a real adapter; governed, monitored,
   with a caged-worker loop and a tested cutover mechanism.
+- **Invariant 6 armed.** The live tool port now runs through the acquire funnel, so every tool is
+  quarantined → scanned → fingerprinted before it can run, and the digest is re-checked at invoke
+  (a swap after admission is denied). Second real tool `repo_ls` was added the one-adapter way
+  (`admit` + `register`), zero core edits, proving the modularity contract on the Tool port.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
   (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 44/44 unit + `accept.py` 8/8 green.
+- **Tests:** 61/61 unit + `accept.py` 10/10 green.
 
 ### Waiting on a human (each a single step)
 

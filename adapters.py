@@ -101,6 +101,9 @@ class LedgerMemory(MemoryPort):
 
 
 # --- Tool reference: one trivial SAFE, read-only tool ---------------------------
+STATUS_SPEC = "status@v1: return {ok:true}; read-only, takes no args"
+
+
 class StatusTool(ToolPort):
     """Proves the invoke path + the gate. `status` is safe+reversible; unknown tool -> deny."""
 
@@ -111,6 +114,26 @@ class StatusTool(ToolPort):
         if tool != "status":          # tool not in registry -> deny (fail-closed)
             raise PermissionError(f"tool {tool!r} not registered")
         return {"tool": "status", "ok": True, "caller": caller}
+
+
+# --- Tool reference #2: a real read-only tool that TOUCHES the filesystem --------
+# It is the second-adapter proof: adding a capability is `admit(spec) + register(name, spec, fn)`
+# through the funnel (invariant 6), zero core edits. It is confined to the repo root (no path
+# escape) and read-only, and its args pass the same DLP gate as any other action.
+REPO_LS_SPEC = "repo_ls@v1: list filenames under the repo root; path-escape denied; read-only"
+_REPO_ROOT = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
+
+
+def repo_ls(args: dict, caller: str) -> dict:
+    """List entries under repo_root/<sub>. Any path escaping the root -> deny (confinement)."""
+    sub = str(args.get("sub", "")).strip()
+    target = os.path.realpath(os.path.join(_REPO_ROOT, sub))
+    if target != _REPO_ROOT and not target.startswith(_REPO_ROOT + os.sep):
+        raise PermissionError(f"repo_ls: path {sub!r} escapes the repo root")
+    if not os.path.isdir(target):
+        raise FileNotFoundError(f"repo_ls: no such directory {sub!r}")
+    return {"tool": "repo_ls", "dir": sub or ".",
+            "entries": sorted(os.listdir(target)), "caller": caller}
 
 
 # --- Surface reference: a local in-process door funnelling into the one door ----

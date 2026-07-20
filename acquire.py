@@ -86,3 +86,25 @@ class GovernedTools(ToolPort):
         if not self.funnel.is_admitted(tool, spec):   # unadmitted or tampered -> deny
             raise PermissionError(f"tool {tool!r} not admitted (unscanned or digest changed)")
         return fn(args, caller)
+
+
+def build_toolbox(evaluators):
+    """Wire the LIVE tool port through the funnel: every tool is quarantined, scanned, and
+    fingerprinted before it can run (invariant 6, ARMED, not just unit-tested). Returns
+    (GovernedTools, AcquireFunnel).
+
+    Adding a capability is exactly the two lines per tool below: `funnel.admit(name, spec)` then
+    `box.register(name, spec, fn)`. That is the native-modularity contract for the Tool port,
+    the heart and the port contracts never change.
+    """
+    from adapters import REPO_LS_SPEC, STATUS_SPEC, StatusTool, repo_ls
+    funnel = AcquireFunnel(evaluators=list(evaluators))
+    box = GovernedTools(funnel)
+
+    st = StatusTool()
+    funnel.admit("status", STATUS_SPEC)
+    box.register("status", STATUS_SPEC, lambda args, caller: st.invoke("status", args, caller))
+
+    funnel.admit("repo_ls", REPO_LS_SPEC)
+    box.register("repo_ls", REPO_LS_SPEC, repo_ls)
+    return box, funnel

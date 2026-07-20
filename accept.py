@@ -13,7 +13,7 @@ import sqlite3
 import sys
 
 import memory as memmod
-from adapters import LocalModel, RefEvaluator, ResearcherWorker, StatusTool
+from adapters import REPO_LS_SPEC, LocalModel, RefEvaluator, ResearcherWorker, StatusTool, repo_ls
 from cutover import DualWriteMemory
 from doctor import check as doctor_check
 from heart import Heart, Registry, Trace
@@ -170,8 +170,31 @@ def _b9():
         f"allow={ok_status} block={bad_status} model_calls={len(calls)}"
 
 
+@box("10. invariant 6 ARMED: the live tool port is funnel-gated (unadmitted/tampered -> deny)")
+def _b10():
+    from acquire import build_toolbox
+    box, funnel = build_toolbox([RefEvaluator()])
+    # both reference tools passed quarantine -> scan -> fingerprint and are invocable
+    admitted = box.list() == ["status", "repo_ls"] and box.invoke("status", {}, "taha")["ok"]
+    # tamper: swap a tool's spec after admission -> digest mismatch -> denied at INVOKE (re-gate on change)
+    box.register("repo_ls", REPO_LS_SPEC + " (swapped)", repo_ls)
+    tampered = False
+    try:
+        box.invoke("repo_ls", {}, "taha")
+    except PermissionError:
+        tampered = True
+    # a tool that was never admitted cannot run
+    unadmitted = False
+    try:
+        box.invoke("ghost", {}, "taha")
+    except PermissionError:
+        unadmitted = True
+    return admitted and tampered and unadmitted, \
+        f"admitted={admitted} tamper_denied={tampered} unadmitted_denied={unadmitted}"
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True

@@ -15,6 +15,7 @@ import json
 import os
 import urllib.request
 
+from acquire import build_toolbox
 from adapters import (
     ACEvaluator,
     GuardModelEvaluator,
@@ -22,7 +23,6 @@ from adapters import (
     LocalModel,
     LocalSurface,
     RefEvaluator,
-    StatusTool,
 )
 from heart import Heart, Registry, Trace
 from manifest import Manifest
@@ -94,7 +94,8 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mo
     reg.register(Manifest("model", "primary"), LocalModel())
     ledger = BrainMemory(db_path) if real_memory else LedgerMemory(db_path)
     reg.register(Manifest("memory", "ledger"), ledger)
-    reg.register(Manifest("tool", "status", tools=["status"]), StatusTool())
+    toolbox, _funnel = build_toolbox([RefEvaluator()])   # invariant 6 armed: funnel-gated tool port
+    reg.register(Manifest("tool", "toolbox", tools=["status", "repo_ls"]), toolbox)
     reg.register(Manifest("evaluator", "ref-dlp"), RefEvaluator())
     reg.register(Manifest("evaluator", "agent-control"),
                  ACEvaluator(AC_BASE, AIBODY_AGENT))  # the LIVE control plane, fail-closed
