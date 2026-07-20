@@ -84,17 +84,23 @@ def setup_ac() -> None:
 
 
 def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mode: str = "observe",
-                   with_cloud: bool = False):
+                   with_cloud: bool = False, model_base: str | None = None, guard_judge=None):
     """Wire the governed stack. real_memory=True uses the rebuilt BrainMemory core (FTS+vector+RRF,
     scan-on-write); False falls back to the toy LedgerMemory. The source memory store is never touched.
 
     guard_mode: 'observe' (warn/log, never blocks) or 'enforce' (blocks on UNSAFE). Enforce is only
     authorized AFTER calibration passes (see calibration_set.py; the shipped run scored Se 1.0 / Sp
-    1.0 on 55 cases). Enforce calls the local model on every gate, so it needs a live model endpoint."""
+    1.0 on 55 cases). Enforce calls the local model on every gate, so it needs a live model endpoint.
+
+    model_base: point the Model adapter at a different endpoint, e.g. the tier-2 gateway (gateway.py)
+    so every model call also crosses the out-of-process choke point. None -> the model's own default.
+    guard_judge: an optional judge(text)->bool for the guard-model (DefenseClaw, a stub); None -> the
+    guard model's HTTP call."""
     from memory import BrainMemory
     trace, reg, store = Trace(), Registry(), EvalStore(db_path)
+    model_kw = {"base": model_base} if model_base else {}
     reg.register(Manifest("model", "primary", controls={"tier": "local", "accepts": "any"}),
-                 LocalModel())
+                 LocalModel(**model_kw))
     if with_cloud:   # opt-in second tier: offloads only NON-sensitive calls (router + adapter enforce)
         reg.register(Manifest("model", "cloud", controls={"tier": "cloud", "accepts": "non-sensitive"}),
                      CloudModel())
@@ -106,7 +112,7 @@ def build_governed(db_path: str = ":memory:", real_memory: bool = True, guard_mo
     reg.register(Manifest("evaluator", "agent-control"),
                  ACEvaluator(AC_BASE, AIBODY_AGENT))  # the LIVE control plane, fail-closed
     reg.register(Manifest("evaluator", "guard-model", controls={"mode": guard_mode}),
-                 GuardModelEvaluator(mode=guard_mode))  # CALIBRATED (Se/Sp 1.0); enforce = blocks
+                 GuardModelEvaluator(mode=guard_mode, judge=guard_judge))  # CALIBRATED; enforce = blocks
     heart = Heart(reg, trace, eval_store=store)
     door = LocalSurface(heart.handle, DOOR_TOKEN)
     reg.register(Manifest("surface", "local-door"), door)

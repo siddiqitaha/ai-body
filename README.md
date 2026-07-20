@@ -68,7 +68,9 @@ agent ─▶ [tier 1: heart bus, in-proc, all 4 guards] ─▶ [tier 2: LLM gate
 
 Tier 1 is fast and catches most things; tier 2 is the choke point a compromised agent cannot
 bypass. Live-proven: a benign prompt forwards to the model, a secrets-file prompt is blocked by
-the gateway before the model is ever called. Point the Model adapter's base at the gateway to arm it.
+the gateway before the model is ever called. Point the Model adapter's base at the gateway to arm it:
+`AIBODY_MODEL_BASE=http://127.0.0.1:19099/v1 AIBODY_GUARD_MODE=enforce python3 serve.py` runs the
+network door behind BOTH tiers (the in-process bus in enforce + the out-of-process gateway).
 
 Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-body/)** (source: [`docs/index.html`](docs/index.html)).
 
@@ -102,7 +104,7 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 
 - `agent-control`, the live Agent Control server on `:19381` (fail-closed)
 - `local-scanner` , a local safety scanner on `:18970` (fail-closed; needs `SCANNER_GATEWAY_TOKEN` to go live)
-- `guard-model`, a local model judging SAFE/UNSAFE. **Calibrated**: Se 1.0 / Sp 1.0 on 55 labeled cases (`calibration_set.py`), so `enforce` mode (blocking) is authorized; ships in `observe` by default
+- `guard-model`, a local model judging SAFE/UNSAFE (a `judge` can be injected, e.g. DefenseClaw). **Calibrated**: Se 1.0 / Sp 1.0 on 55 labeled cases (`calibration_set.py`), so `enforce` mode (blocking) is authorized; ships in `observe` by default. Enforce is proven offline: UNSAFE → deny, SAFE → allow, a judge error fails closed
 - `ref-dlp`, a deterministic secret-marker scan
 
 ---
@@ -110,11 +112,11 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 12 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 13 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
-# the unit suites (78 tests, offline)
-for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10 test_phase11; do
+# the unit suites (87 tests, offline)
+for t in test_skeleton test_phase1 test_phase2 test_phase3 test_phase4 test_phase5 test_phase6 test_phase7 test_phase8 test_phase9 test_phase10 test_phase11 test_phase12; do
   python3 $t.py; done
 
 # the governed walk through the live Agent Control server (needs AC keys in env)
@@ -151,7 +153,7 @@ delegation, and `doctor`. All green = proven.
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
 | `phase1.py` | wires the governed stack; `build_governed()` |
 | `accept.py` | the one-command definition-of-done gate |
-| `test_*.py` | 12 suites, 78 tests |
+| `test_*.py` | 13 suites, 87 tests |
 
 ---
 
@@ -172,9 +174,13 @@ delegation, and `doctor`. All green = proven.
   the same fail-closed contract as the local door (Bearer auth, principal via `X-Principal`, missing
   principal denied, bad token 401 before the heart is reached). `python3 serve.py` runs it. All five
   ports now have two adapters or a proven second-adapter path, the modularity claim holds on each.
+- **Both enforcement tiers armed together.** `serve.py` can run the network door with the guard model
+  in `enforce` (tier-1 bus blocks UNSAFE) AND the model routed through the tier-2 gateway (out-of-process
+  choke point), via `AIBODY_GUARD_MODE` and `AIBODY_MODEL_BASE`. The guard model takes a pluggable
+  `judge`, so DefenseClaw or any other judge can back it.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
   (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 78/78 unit + `accept.py` 12/12 green.
+- **Tests:** 87/87 unit + `accept.py` 13/13 green.
 
 ### Waiting on a human (each a single step)
 

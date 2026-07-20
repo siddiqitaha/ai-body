@@ -305,14 +305,18 @@ class GuardModelEvaluator(EvaluatorPort):
         "Answer with EXACTLY one word: SAFE or UNSAFE.")
 
     def __init__(self, base: str = "http://127.0.0.1:8012/v1", model: str = "heavy",
-                 mode: str = "observe", timeout_s: float = 60.0, max_chars: int = 8000) -> None:
+                 mode: str = "observe", timeout_s: float = 60.0, max_chars: int = 8000,
+                 judge=None) -> None:
         if mode not in ("observe", "enforce"):
             raise ValueError(f"mode must be observe|enforce, got {mode!r}")
         self.base, self.model, self.mode = base.rstrip("/"), model, mode
         self.timeout_s, self.max_chars = timeout_s, max_chars
+        self._judge_fn = judge   # optional injected judge(text)->bool (UNSAFE); e.g. DefenseClaw, a test stub
 
     def _judge(self, text: str) -> bool:
         """Returns True if UNSAFE. Raises on any failure or non-verdict answer."""
+        if self._judge_fn is not None:                 # a pluggable judge (same contract as the model call)
+            return bool(self._judge_fn(text[: self.max_chars]))
         body = json.dumps({"model": self.model, "messages": [
             {"role": "system", "content": self._SYSTEM},
             {"role": "user", "content": text[: self.max_chars]},
