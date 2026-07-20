@@ -3,6 +3,7 @@ brain-new.db
 notes-export.jsonl
 migration-full.log
 calibration-receipt.json
+cutover-receipt.json
 __pycache__/
 *.pyc
 source-memory.db
