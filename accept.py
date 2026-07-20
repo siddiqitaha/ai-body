@@ -323,8 +323,42 @@ def _b14():
         f"coder_wrote={wrote} researcher_write_denied={read_only} delegation_deny_by_default={deny_edge}"
 
 
+@box("15. cutover lifecycle: dual-write -> parity -> flip -> rollback, reversible, nothing destroyed")
+def _b15():
+    import memory as memmod
+    from cutover import DualWriteMemory
+    from memory import BrainMemory
+    memmod.embed = lambda texts, timeout_s=60.0: None      # FTS-only: deterministic + offline
+
+    seed = ["the heart is the coordinator", "DefenseClaw governs the gateway",
+            "fail closed is the first rule", "ports are swappable behind the heart",
+            "memory is append-only and owned"]
+    primary = BrainMemory(":memory:", embed_on_write=False)   # current source of truth
+    shadow = BrainMemory(":memory:", embed_on_write=False)    # migrated candidate (same notes/order)
+    for s in seed:
+        primary.remember(s, "global")
+        shadow.remember(s, "global")
+
+    divergences = []
+    dw = DualWriteMemory(primary, shadow, on_divergence=lambda k, d: divergences.append((k, d)))
+    for i in range(3):
+        dw.remember(f"cutover canary {i} about governance", "global")   # dual-written to BOTH
+
+    overlaps = [dw.compare_recall(q, 5, "global")["overlap"]
+                for q in ("the heart coordinator", "cutover canary governance", "fail closed rule")]
+    dw.flip()
+    after_flip = len(dw.recall("cutover canary governance", 5, "global"))
+    dw.rollback()
+    after_rollback = len(dw.recall("cutover canary governance", 5, "global"))
+
+    ok = (dw.shadow_write_failures == 0 and min(overlaps) == 1.0 and not divergences
+          and after_flip >= 1 and after_rollback >= 1)
+    return ok, (f"failures={dw.shadow_write_failures} min_overlap={min(overlaps)} "
+                f"divergences={len(divergences)} flip={after_flip} rollback={after_rollback}")
+
+
 if __name__ == "__main__":
-    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11, _b12, _b13, _b14]:
+    for fn in [_b1, _b2, _b3, _b4, _b5, _b6, _b7, _b8, _b9, _b10, _b11, _b12, _b13, _b14, _b15]:
         pass  # boxes already ran at import via the decorator
     print("\n  AI BODY FOUNDATION, DEFINITION OF DONE\n" + "  " + "-" * 60)
     allok = True

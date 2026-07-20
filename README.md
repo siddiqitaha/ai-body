@@ -94,7 +94,7 @@ Full visual: **[the live architecture page](https://siddiqitaha.github.io/ai-bod
 |---|---|---|---|
 | **Model** | `complete` / `embed` / `capabilities` | `LocalModel` (local tier) + optional `CloudModel` (cloud tier) | tier-aware routing: private-by-default → local; only non-sensitive may offload; DLP scrub on egress, never send raw |
 | **Memory** | `remember` / `recall` / `supersede` / `invalidate` | `BrainMemory`, notes + FTS + vectors, fused by RRF | scan-on-write, per-scope filter, append-only |
-| **Tool** | `list` / `invoke` | `status` + `repo_ls`, admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
+| **Tool** | `list` / `invoke` | `status` + `repo_ls` (read) + `repo_write` (confined write), admitted through the acquire funnel | fingerprint-admitted (invariant 6), fail-closed gate before every invoke; unknown → deny |
 | **Surface** | `receive` | `LocalSurface` (in-process token door) + `HTTPSurface` (network door) | Bearer auth, principal via header (never defaulted), missing principal → deny |
 | **Evaluator** | `evaluate → Verdict{deny,steer,warn,log,allow}` | the verdict bus (four guards, below) | tighten-only; enforcement error → deny |
 | *(Worker)* | `run(task, cage)` | `ResearcherWorker` (read-only) + `CoderWorker` (governed write, no exec) | per-worker tool allowlist (the cage), delegation deny-by-default, learning drains inward |
@@ -112,7 +112,7 @@ may only tighten, and any guard that errors on an enforcement path is treated as
 ## Run it
 
 ```bash
-# one-command health check: all 14 definition-of-done boxes, exits nonzero if any fail
+# one-command health check: all 15 definition-of-done boxes, exits nonzero if any fail
 python3 accept.py
 
 # the unit suites (93 tests, offline)
@@ -125,6 +125,7 @@ python3 phase1.py
 # the memory rebuild + parity gate (read-only against the source memory store)
 python3 migrate.py 0            # 0 = all notes; a number = sample that many
 python3 parity_harness.py 150   # OLD brain vs NEW core, same sample
+python3 cutover_live.py         # prove the full cutover lifecycle on the real notes (writes a receipt)
 ```
 
 `accept.py` is the gate that says *is the foundation still proven?*, end-to-end walk, fail-closed
@@ -145,6 +146,7 @@ delegation, and `doctor`. All green = proven.
 | `migrate.py` | memory migration with the parity gate (read-only toward the source memory store) |
 | `parity_harness.py` | the honest old-vs-new recall comparison |
 | `cutover.py` | shadow dual-write + rollback (the strangler-fig cutover mechanism) |
+| `cutover_live.py` | runs the full cutover lifecycle on the real notes end to end + writes a receipt |
 | `acquire.py` | the acquire funnel (invariant 6): quarantine → scan → fingerprint → sandbox; `build_toolbox()` arms the live tool port |
 | `router.py` | tier-aware model routing: private-by-default → local, non-sensitive may offload to cloud, fail-closed |
 | `serve.py` | run the governed stack over HTTP (the `HTTPSurface` network door) |
@@ -185,13 +187,18 @@ delegation, and `doctor`. All green = proven.
   `build_governed(with_workers=True)` registers them. This mirrors the running multi-agent fleet
   (researcher + coder) and tightens it: capability arrives only behind the cage, the gate, and the funnel.
 - **Memory:** 1930 notes migrated into a side copy; recall parity with the source memory store confirmed
-  (hit@12 0.913 = 0.913, delta 0.000). No cutover performed, the source memory store is untouched.
-- **Tests:** 93/93 unit + `accept.py` 14/14 green.
+  (hit@12 0.913 = 0.913, delta 0.000).
+- **Cutover proven live + reversible.** `cutover_live.py` ran the full strangler-fig lifecycle on all
+  1930 real notes: shadow dual-write (0 failures), `compare_recall` parity on real queries (overlap
+  1.0, 0 divergence), flip so the candidate serves reads, then rollback, reads intact both ways,
+  nothing destroyed (receipt in `cutover-receipt.json`). The live source-daemon flip stays a
+  deliberate, separately-backed-up user act; the mechanism it would use is now proven end to end.
+- **Tests:** 93/93 unit + `accept.py` 15/15 green.
 
 ### Waiting on a human (each a single step)
 
 - Label 50-100 real cases → `calibrate.py` promotes the guard model from observe to blocking.
 - Provide `SCANNER_GATEWAY_TOKEN` → the LocalScanner guard goes live.
-- Run the real live-brain cutover when chosen → the mechanism is proven and reversible.
+- Flip the live source-daemon when chosen → the cutover mechanism is proven and reversible (above).
 
 From here the AI Body grows by adding the next worker, tool, model, or surface, one adapter at a time.
