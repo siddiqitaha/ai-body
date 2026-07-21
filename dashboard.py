@@ -34,7 +34,9 @@ BOUND = {"host": "127.0.0.1", "port": 8971}   # filled at startup, used to point
 # {content} -> {action} contract a real claw does, and blocks a few obvious test patterns.
 _DUMMY_RULES = [("malware", "known-bad keyword"), ("ransom", "known-bad keyword"),
                 ("<script", "script injection"), ("drop table", "sql injection"),
-                ("BEGIN RSA PRIVATE KEY", "private key")]
+                ("BEGIN RSA PRIVATE KEY", "private key"), ("curl", "pipe-to-shell"),
+                ("| sh", "pipe-to-shell"), ("wget", "remote fetch"), ("rm -rf", "destructive"),
+                ("exfiltrate", "exfiltration"), ("ignore previous instructions", "prompt injection")]
 
 
 def dummy_claw_verdict(content: str) -> dict:
@@ -139,6 +141,8 @@ class Body:
         return name in self.reg.evaluators
 
     def attach_claw(self, name: str, endpoint: str, token: str) -> dict:
+        if endpoint.startswith("demo"):     # a preset brick with no real endpoint -> a WORKING demo scanner
+            endpoint = f"http://127.0.0.1:{BOUND['port']}/api/dummyclaw"
         claw = HTTPClaw(name, endpoint, token)
         self.catalog[name] = claw
         self.reg.register(Manifest("evaluator", name), claw)
