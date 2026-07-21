@@ -12,16 +12,76 @@ Env (all optional, sane local defaults):
 from __future__ import annotations
 
 import atexit
+import http.client
 import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+SPLUNK_PROXY_PORT = int(os.environ.get("SPLUNK_PROXY_PORT", "8074"))
+
+
+def _splunk_proxy_handler():
+    """A transparent reverse proxy to the local Splunk that strips X-Frame-Options / frame-ancestors
+    so the real Splunk UI can be shown IN the lab. It's your own local Splunk, so this just removes
+    the header that stops any page (even yours) from framing it. HTTP only (no websockets)."""
+    tgt = urllib.parse.urlparse(CFG["splunk_web"])
+    host, port = tgt.hostname or "127.0.0.1", tgt.port or 8090
+
+    class Proxy(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            pass
+
+        def _pass(self):
+            try:
+                conn = http.client.HTTPConnection(host, port, timeout=30)
+                hdrs = {k: v for k, v in self.headers.items() if k.lower() != "host"}
+                hdrs["Host"] = f"{host}:{port}"
+                n = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(n) if n else None
+                conn.request(self.command, self.path, body=body, headers=hdrs)
+                r = conn.getresponse()
+                data = r.read()
+            except Exception as e:
+                self.send_response(502); self.end_headers()
+                self.wfile.write(f"proxy error: {e}".encode()); return
+            self.send_response(r.status)
+            for k, v in r.getheaders():
+                kl = k.lower()
+                if kl in ("x-frame-options", "content-length", "transfer-encoding", "connection"):
+                    continue
+                if kl == "content-security-policy":
+                    v = re.sub(r"frame-ancestors[^;]*;?\s*", "", v)   # drop only the frame rule
+                if kl in ("location", "set-cookie"):
+                    v = v.replace(f"{host}:{port}", f"127.0.0.1:{SPLUNK_PROXY_PORT}")
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = do_OPTIONS = _pass
+    return Proxy
+
+
+_SPLUNK_PROXY = {"up": False}
+
+
+def start_splunk_proxy():
+    if not _probe(CFG["splunk_web"])[0]:
+        return False
+    srv = ThreadingHTTPServer(("127.0.0.1", SPLUNK_PROXY_PORT), _splunk_proxy_handler())
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    _SPLUNK_PROXY["up"] = True
+    return True
 
 _TTYD = {"proc": None, "port": int(os.environ.get("TTYD_PORT", "8973"))}
 
@@ -49,8 +109,11 @@ def screens() -> dict:
         "defenseclaw": {"name": "DefenseClaw TUI", "embed": tt,
                         "url": f"http://127.0.0.1:{_TTYD['port']}/" if tt else "",
                         "why": "real terminal via ttyd (read-only)" if tt else "install ttyd + defenseclaw to embed"},
-        "splunk": {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
-                   "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab (or use an official embed token)"},
+        "splunk": ({"name": "Splunk", "embed": True, "url": f"http://127.0.0.1:{SPLUNK_PROXY_PORT}/",
+                    "why": "real Splunk, framed via a header-stripping proxy (your local instance)"}
+                   if _SPLUNK_PROXY["up"] else
+                   {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
+                    "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab"}),
         "galileo": {"name": "Galileo", "embed": False, "url": CFG["galileo_base"] or "",
                     "why": "cloud SaaS — connect via API or a server-side browser layer"},
     }
@@ -267,6 +330,8 @@ class H(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("LAB_PORT", "8972"))
     start_ttyd()
+    if start_splunk_proxy():
+        print(f"Splunk framed via proxy on :{SPLUNK_PROXY_PORT}")
     print(f"Governed Agents Lab -> http://127.0.0.1:{port}  (DefenseClaw TUI on :{_TTYD['port']})")
     ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
 
