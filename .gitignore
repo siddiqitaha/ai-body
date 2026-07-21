@@ -17,3 +17,6 @@ apps.json
 
 # local playwright venv for the Galileo browser-layer (rebuildable: uv venv .labenv && uv pip install playwright)
 .labenv/
+
+# noVNC static files (rebuildable: git clone https://github.com/novnc/noVNC ~/.lab-novnc)
+.lab-novnc/

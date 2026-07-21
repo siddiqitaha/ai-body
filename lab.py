@@ -199,6 +199,73 @@ def start_ac_proxy():
     return _start_proxy("Agent Control", CFG["ac_base"], AC_PROXY_PORT, _AC_PROXY,
                         inject={"X-API-Key": _ac_key()})
 
+
+# --- noVNC: the FAST in-page path for heavy apps (VNC sends only changed rectangles) --------------
+NOVNC_WEB = str(Path.home() / ".lab-novnc")
+_NOVNC: dict = {}
+_NOVNC_LOCK = threading.Lock()
+
+
+def _chromium_bin():
+    import glob
+    for p in sorted(glob.glob(str(Path.home() / ".cache/ms-playwright/chromium-*/chrome-linux/chrome")),
+                    reverse=True):
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def novnc_available():
+    return bool(shutil.which("x11vnc") and shutil.which("Xvfb") and _chromium_bin()
+                and Path(NOVNC_WEB, "vnc.html").exists())
+
+
+def start_novnc(name, idx, url, profile):
+    """Run a real Chromium in a virtual display, exposed over VNC and bridged to the browser by
+    websockify+noVNC. Returns the websocket port to iframe, or None if the stack isn't available."""
+    import time
+    with _NOVNC_LOCK:
+        if name in _NOVNC:
+            return _NOVNC[name]["ws"]
+        if not novnc_available():
+            return None
+        disp, vnc, ws = f":{90 + idx}", 5900 + idx, 6080 + idx
+        env = {**os.environ, "DISPLAY": disp}
+        dn = subprocess.DEVNULL
+        websockify = str(Path(__file__).parent / ".labenv" / "bin" / "websockify")
+        if not Path(websockify).exists():
+            websockify = shutil.which("websockify") or websockify
+        procs = []
+        try:
+            procs.append(subprocess.Popen(["Xvfb", disp, "-screen", "0", "1360x820x24", "-nolisten", "tcp"],
+                                          stdout=dn, stderr=dn))
+            time.sleep(1.2)
+            procs.append(subprocess.Popen(
+                [_chromium_bin(), "--no-sandbox", "--no-first-run", "--disable-dev-shm-usage",
+                 "--disable-infobars", f"--user-data-dir={profile}", "--window-position=0,0",
+                 "--window-size=1360,820", f"--app={url}"], env=env, stdout=dn, stderr=dn))
+            time.sleep(1.2)
+            procs.append(subprocess.Popen(
+                ["x11vnc", "-display", disp, "-forever", "-shared", "-nopw", "-rfbport", str(vnc),
+                 "-quiet", "-noxdamage"], stdout=dn, stderr=dn))
+            time.sleep(0.6)
+            procs.append(subprocess.Popen([websockify, "--web", NOVNC_WEB, str(ws), f"localhost:{vnc}"],
+                                          stdout=dn, stderr=dn))
+        except Exception as e:
+            print(f"  (noVNC for {name} failed: {e})")
+            for p in procs:
+                p.terminate()
+            return None
+        _NOVNC[name] = {"ws": ws, "procs": procs}
+        atexit.register(lambda: [p.terminate() for p in procs])
+        return ws
+
+
+def novnc_url(name):
+    d = _NOVNC.get(name)
+    return (f"http://127.0.0.1:{d['ws']}/vnc.html?autoconnect=1&resize=remote&reconnect=true"
+            f"&reconnect_delay=1000&show_dot=1") if d else None
+
 _TTYD = {"proc": None, "port": int(os.environ.get("TTYD_PORT", "8973"))}
 
 
@@ -241,10 +308,16 @@ def screens() -> dict:
         "defenseclaw": {"name": "DefenseClaw TUI", "embed": tt,
                         "url": f"http://127.0.0.1:{_TTYD['port']}/" if tt else "",
                         "why": "real terminal via ttyd (read-only)" if tt else "install ttyd + defenseclaw to embed"},
-        "splunk": {"name": "Splunk", "embed": False, "view": "splunk", "tab_url": CFG["splunk_web"],
-                   "why": "real Splunk via the browser-layer (own cookie jar, so no cross-port clash)"},
-        "galileo": {"name": "Galileo", "embed": False, "view": "galileo", "tab_url": CFG["galileo_base"] or "",
-                    "why": "cloud SaaS — streamed via the browser-layer; log in once, it sticks"},
+        "splunk": ({"name": "Splunk", "embed": True, "url": novnc_url("splunk"), "tab_url": CFG["splunk_web"],
+                    "why": "real Splunk, fast in-page (noVNC — changed pixels only)"}
+                   if novnc_url("splunk") else
+                   {"name": "Splunk", "embed": False, "view": "splunk", "tab_url": CFG["splunk_web"],
+                    "why": "real Splunk via the browser-layer (own cookie jar, so no cross-port clash)"}),
+        "galileo": ({"name": "Galileo", "embed": True, "url": novnc_url("galileo"), "tab_url": CFG["galileo_base"] or "",
+                     "why": "real Galileo, fast in-page (noVNC); log in once, it sticks"}
+                    if novnc_url("galileo") else
+                    {"name": "Galileo", "embed": False, "view": "galileo", "tab_url": CFG["galileo_base"] or "",
+                     "why": "cloud SaaS — streamed via the browser-layer; log in once, it sticks"}),
     }
 
 HERE = Path(__file__).parent
@@ -525,7 +598,15 @@ def main():
     start_ttyd()
     if start_ac_proxy():                          # AC still needs the proxy (to inject its API key)
         print(f"Agent Control (key-injected) via proxy on :{AC_PROXY_PORT}")
-    # Splunk + Galileo now use the browser-layer (own cookie jar) instead of iframes.
+    if novnc_available():                          # FAST path for the heavy apps
+        if start_novnc("splunk", 0, CFG["splunk_web"], str(Path.home() / ".lab-splunk-novnc")):
+            print("Splunk via noVNC on :6080")
+        if start_novnc("galileo", 1, CFG["galileo_base"] or "https://app.galileo.ai",
+                       str(Path.home() / ".lab-galileo-novnc")):
+            print("Galileo via noVNC on :6081")
+    else:
+        print("  (noVNC not available — install x11vnc for the fast path; falling back to screencast)")
+    # Splunk + Galileo: noVNC if x11vnc is installed, else the browser-layer screencast.
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     except OSError as e:
