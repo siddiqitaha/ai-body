@@ -266,12 +266,14 @@ function startGalileo(b,s){
   view.onwheel=e=>{e.preventDefault();send({type:'scroll',dy:Math.round(e.deltaY)});};
   view.onkeydown=e=>{const sp={'Enter':'Enter','Backspace':'Backspace','Tab':'Tab','Escape':'Escape','ArrowUp':'ArrowUp','ArrowDown':'ArrowDown','ArrowLeft':'ArrowLeft','ArrowRight':'ArrowRight','Delete':'Delete'};
     if(sp[e.key]){e.preventDefault();send({type:'key',key:sp[e.key]});} else if(e.key.length===1){e.preventDefault();send({type:'type',text:e.key});}};
-  const poll=async()=>{try{const r=await fetch('/api/galileo/frame?t='+Date.now());
-    if(r.status===200){const bl=await r.blob();const u=URL.createObjectURL(bl);const old=img.src;img.src=u;if(old.startsWith('blob:'))URL.revokeObjectURL(old);img.style.display='block';msg.style.display='none';}
+  GAL.seq=-1;
+  const poll=async()=>{try{const r=await fetch('/api/galileo/frame?seq='+GAL.seq);
+    if(r.status===200){GAL.seq=r.headers.get('X-Frame-Seq')||GAL.seq;const bl=await r.blob();const u=URL.createObjectURL(bl);const old=img.src;img.src=u;if(old.startsWith('blob:'))URL.revokeObjectURL(old);img.style.display='block';msg.style.display='none';}
+    else if(r.status===204){/* no change, keep current frame */}
     else if(r.status===202){msg.textContent='starting the browser… (first load can take ~10s)';}
-    else{const j=await r.json().catch(()=>({}));msg.innerHTML='browser-layer unavailable: '+(j.error||r.status)+'<br><span style="color:var(--faint)">run the lab with Playwright installed (see note), or use the open-in-tab link above.</span>';}
+    else{const j=await r.json().catch(()=>({}));msg.innerHTML='browser-layer unavailable: '+(j.error||r.status)+'<br><span style="color:var(--faint)">use the open-in-tab link below.</span>';}
   }catch(e){}};
-  poll(); GAL.timer=setInterval(poll,900);
+  poll(); GAL.timer=setInterval(poll,250);
 }
 
 /* boot */

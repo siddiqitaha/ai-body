@@ -38,9 +38,11 @@ class GalileoBrowser:
         self.url, self.profile, self.w, self.h = url, profile, w, h
         self.q: queue.Queue = queue.Queue()
         self.ready, self.err = False, None
+        self.latest, self.seq = None, 0          # newest JPEG frame (bytes) + a counter, fed by screencast
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self):
+        import base64
         try:
             from playwright.sync_api import sync_playwright
         except Exception as e:
@@ -52,27 +54,42 @@ class GalileoBrowser:
                     args=["--disable-dev-shm-usage"])
                 page = ctx.pages[0] if ctx.pages else ctx.new_page()
                 page.goto(self.url, timeout=45000, wait_until="domcontentloaded")
+                # CDP screencast: Chrome PUSHES a frame only when the page changes (event-driven, light)
+                cdp = ctx.new_cdp_session(page)
+
+                def on_frame(params):
+                    try:
+                        self.latest = base64.b64decode(params["data"]); self.seq += 1
+                        cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
+                    except Exception:
+                        pass
+                cdp.on("Page.screencastFrame", on_frame)
+                cdp.send("Page.startScreencast",
+                         {"format": "jpeg", "quality": 55, "maxWidth": self.w, "maxHeight": self.h,
+                          "everyNthFrame": 1})
                 self.ready = True
                 while True:
-                    name, args, rq = self.q.get()
                     try:
-                        if name == "shot":
-                            r = page.screenshot(type="jpeg", quality=42)
-                        elif name == "click":
-                            page.mouse.click(args["x"], args["y"]); r = b"ok"
-                        elif name == "type":
-                            page.keyboard.type(args["text"]); r = b"ok"
-                        elif name == "key":
-                            page.keyboard.press(args["key"]); r = b"ok"
-                        elif name == "scroll":
-                            page.mouse.wheel(0, args["dy"]); r = b"ok"
-                        elif name == "nav":
-                            page.goto(args["url"], timeout=45000); r = b"ok"
-                        else:
-                            r = b""
-                    except Exception as e:
-                        r = ("err:" + str(e)).encode()
-                    rq.put(r)
+                        name, args, rq = self.q.get_nowait()
+                        try:
+                            if name == "click":
+                                page.mouse.click(args["x"], args["y"]); r = b"ok"
+                            elif name == "type":
+                                page.keyboard.type(args["text"]); r = b"ok"
+                            elif name == "key":
+                                page.keyboard.press(args["key"]); r = b"ok"
+                            elif name == "scroll":
+                                page.mouse.wheel(0, args["dy"]); r = b"ok"
+                            elif name == "nav":
+                                page.goto(args["url"], timeout=45000); r = b"ok"
+                            else:
+                                r = b""
+                        except Exception as e:
+                            r = ("err:" + str(e)).encode()
+                        rq.put(r)
+                    except queue.Empty:
+                        pass
+                    page.wait_for_timeout(20)     # pump CDP events so screencast frames arrive
         except Exception as e:
             self.err = str(e)
 
@@ -414,12 +431,22 @@ class H(BaseHTTPRequestHandler):
             gb = galileo_browser()
             if gb.err:
                 return self._send(503, {"error": gb.err})
-            if not gb.ready:
+            if not gb.ready or gb.latest is None:
                 return self._send(202, {"status": "starting"})
-            img = gb.do("shot")
-            if isinstance(img, bytes) and img[:2] == b"\xff\xd8":
-                return self._send(200, img, "image/jpeg")
-            return self._send(503, {"error": img.decode(errors="replace") if isinstance(img, bytes) else "no frame"})
+            q = urllib.parse.urlparse(self.path).query
+            have = urllib.parse.parse_qs(q).get("seq", ["-1"])[0]
+            if have == str(gb.seq):                 # client already has the newest -> nothing to send
+                self.send_response(204); self.send_header("X-Frame-Seq", str(gb.seq)); self.end_headers()
+                return
+            data = gb.latest
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("X-Frame-Seq", str(gb.seq))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
