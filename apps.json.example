@@ -1,0 +1,6 @@
+[
+  {"name": "your memory/brain", "url": "http://127.0.0.1:8790/", "health": "http://127.0.0.1:8790/", "note": "recall + remember"},
+  {"name": "your scanner (claw)", "url": "http://127.0.0.1:18970/", "health": "http://127.0.0.1:18970/health", "note": "DLP + policy"},
+  {"name": "your control plane", "url": "http://127.0.0.1:19381/", "health": "http://127.0.0.1:19381/health", "note": "agent governance"},
+  {"name": "your model", "url": "http://127.0.0.1:8012/", "health": "http://127.0.0.1:8012/v1/models", "note": "the LLM"}
+]

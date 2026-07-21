@@ -27,6 +27,48 @@ from ports import Decision, Verdict
 
 HERE = Path(__file__).parent
 TOKEN = os.environ.get("AIBODY_HTTP_TOKEN", "dashboard-dev-token")
+APPS_FILE = HERE / "apps.json"     # private, gitignored: your real tools to cross-launch (see apps.json.example)
+BOUND = {"host": "127.0.0.1", "port": 8971}   # filled at startup, used to point the test claw at ourselves
+
+# A built-in DUMMY scanner so anyone can try the attach flow with zero setup: it speaks the same
+# {content} -> {action} contract a real claw does, and blocks a few obvious test patterns.
+_DUMMY_RULES = [("malware", "known-bad keyword"), ("ransom", "known-bad keyword"),
+                ("<script", "script injection"), ("drop table", "sql injection"),
+                ("BEGIN RSA PRIVATE KEY", "private key")]
+
+
+def dummy_claw_verdict(content: str) -> dict:
+    low = content.lower()
+    for pat, why in _DUMMY_RULES:
+        if pat.lower() in low:
+            return {"action": "block", "confidence": 0.98, "reason": f"{why} ({pat!r})"}
+    return {"action": "allow", "confidence": 0.0, "reason": "clean"}
+
+
+def load_apps() -> list[dict]:
+    """The 'cross-launch' list: your real apps (brain, DefenseClaw, ...) with a live up/down ping.
+    Read from apps.json if present; nothing hardcoded, so the public repo carries no infra."""
+    if not APPS_FILE.exists():
+        return []
+    try:
+        apps = json.loads(APPS_FILE.read_text())
+    except Exception:
+        return []
+    out = []
+    for a in apps:
+        url, health = a.get("url", ""), a.get("health") or a.get("url", "")
+        up = False
+        try:
+            req = urllib.request.Request(health, method="GET")
+            with urllib.request.urlopen(req, timeout=2) as r:
+                up = r.status < 500
+        except urllib.error.HTTPError as e:
+            up = e.code < 500          # a 401/404 still means the service is answering
+        except Exception:
+            up = False
+        out.append({"name": a.get("name", "app"), "url": url, "up": up,
+                    "note": a.get("note", "")})
+    return out
 _UNSAFE = ("ignore previous instructions", "exfiltrate", "rm -rf", "disable logging",
            "drop table", "curl", "| sh", "wget ")
 
@@ -177,6 +219,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, BODY.state())
         if self.path == "/api/feed":
             return self._send(200, BODY.feed())
+        if self.path == "/api/apps":
+            return self._send(200, load_apps())
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -187,12 +231,18 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, BODY.attach_claw(b.get("name", "claw"), b.get("endpoint", ""), b.get("token", "")))
         if self.path == "/api/ask":
             return self._send(200, BODY.ask(b.get("intent", "ask"), b.get("text", "")))
+        if self.path == "/api/dummyclaw":                 # the built-in test scanner's endpoint
+            return self._send(200, dummy_claw_verdict(str(b.get("content", ""))))
+        if self.path == "/api/spawn-test-claw":           # one click: attach a working claw pointing at us
+            url = f"http://{BOUND['host']}:{BOUND['port']}/api/dummyclaw"
+            return self._send(200, BODY.attach_claw("test-claw", url, ""))
         self._send(404, {"error": "not found"})
 
 
 def main():
     host = os.environ.get("AIBODY_HTTP_HOST", "127.0.0.1")
     port = int(os.environ.get("AIBODY_HTTP_PORT", "8971"))
+    BOUND["host"], BOUND["port"] = "127.0.0.1", port      # the test claw calls back to us here
     srv = ThreadingHTTPServer((host, port), H)
     print(f"AI Body control room -> http://{host}:{port}   (demo mode, zero deps)")
     try:

@@ -11,3 +11,6 @@ source-memory.db
 _scratch/
 brain_bridge.py       # private crossover wiring to the real brain, not part of the public foundation
 crossover.py          # private crossover runner (live guards + real brain), not part of the public foundation
+
+# private cross-launch list (your real tool URLs); ship apps.json.example instead
+apps.json
