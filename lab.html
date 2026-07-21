@@ -95,13 +95,24 @@
   .grid-stack-item-content{overflow:hidden;display:flex;border-radius:16px}
   .grid-stack-item-content>.card{flex:1;margin:0;display:flex;flex-direction:column;min-height:0;box-shadow:none}
   .grid-stack-item-content>.card>.bd{flex:1;min-height:0;overflow:auto}
-  .grid-stack-item-content>.card>.hd{cursor:default}
+  .grid-stack-item-content>.card>.hd{cursor:grab}
+  .grid-stack-item-content>.card>.hd:active{cursor:grabbing}
   .grid-stack .scrbody{height:100%;resize:none}
-  .grip{font-family:var(--mono);color:var(--faint);cursor:grab;padding:0 6px 0 0;user-select:none;font-size:15px}
+  .grip{font-family:var(--mono);color:var(--dim);cursor:grab;user-select:none;font-size:18px;padding:8px 8px;margin:-6px 6px -6px -4px;border-radius:6px}
+  .grip:hover{color:var(--ink);background:color-mix(in srgb,var(--sys) 14%,transparent)}
   .grip:active{cursor:grabbing}
-  .grid-stack-item.ui-resizable-resizing,.grid-stack-item.ui-draggable-dragging{opacity:.85}
+  .grid-stack-item.ui-resizable-resizing,.grid-stack-item.ui-draggable-dragging{opacity:.9}
+  /* visible, fatter resize handles (the P0 fix) */
+  .grid-stack-item>.ui-resizable-handle{opacity:0;transition:opacity .15s}
+  .grid-stack-item:hover>.ui-resizable-handle{opacity:1}
+  .ui-resizable-e,.ui-resizable-w{width:16px} .ui-resizable-n,.ui-resizable-s{height:16px}
+  .ui-resizable-se,.ui-resizable-sw,.ui-resizable-ne,.ui-resizable-nw{width:22px;height:22px}
+  .ui-resizable-e:after,.ui-resizable-w:after{content:"";position:absolute;top:50%;transform:translateY(-50%);height:36px;width:4px;border-radius:3px;background:color-mix(in srgb,var(--sys) 60%,transparent)}
+  .ui-resizable-e:after{right:3px}.ui-resizable-w:after{left:3px}
+  .ui-resizable-s:after{content:"";position:absolute;left:50%;transform:translateX(-50%);bottom:3px;width:36px;height:4px;border-radius:3px;background:color-mix(in srgb,var(--sys) 60%,transparent)}
+  .tab:focus-visible,.fire:focus-visible,.maxbtn:focus-visible{outline:2px solid var(--sys);outline-offset:2px}
   .maxbtn{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:4px 9px;cursor:pointer;margin-left:8px}
-  .maxbtn:hover{color:var(--ink);border-color:var(--accent)}
+  .maxbtn:hover{color:var(--ink);border-color:color-mix(in srgb,var(--sys) 45%,var(--line))}
   .card.maxed{position:fixed;inset:12px;z-index:60;margin:0;overflow:auto;box-shadow:0 30px 80px -20px #000c}
   .card.maxed .scrbody{height:calc(100vh - 120px)}
   .noembed{padding:34px 22px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.7}
@@ -124,7 +135,7 @@
     <p>Every button below hits your live governed stack for real — the verdict, the control that caught it, and the audit link are your tools' actual output.</p></div>
 
   <div class="grid-stack" id="grid">
-    <div class="grid-stack-item" gs-id="screens" gs-x="0" gs-y="0" gs-w="12" gs-h="8">
+    <div class="grid-stack-item" gs-id="screens" gs-x="0" gs-y="0" gs-w="12" gs-h="16">
       <div class="grid-stack-item-content"><div class="card">
         <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Live tool screens</h2>
           <div class="tabs" id="scr-tabs"></div>
@@ -132,7 +143,7 @@
         <div class="bd"><div id="scr-body" class="scrbody"></div></div>
       </div></div>
     </div>
-    <div class="grid-stack-item" gs-id="box" gs-x="0" gs-y="8" gs-w="7" gs-h="7">
+    <div class="grid-stack-item" gs-id="box" gs-x="0" gs-y="16" gs-w="7" gs-h="14">
       <div class="grid-stack-item-content"><div class="card">
         <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>The governed box</h2><span class="r" id="boxr">live</span></div>
         <div class="bd">
@@ -143,7 +154,7 @@
         </div>
       </div></div>
     </div>
-    <div class="grid-stack-item" gs-id="runner" gs-x="7" gs-y="8" gs-w="5" gs-h="7">
+    <div class="grid-stack-item" gs-id="runner" gs-x="7" gs-y="16" gs-w="5" gs-h="14">
       <div class="grid-stack-item-content"><div class="card">
         <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Fire a real attack</h2><span class="r">→ live Agent Control</span></div>
         <div class="bd" id="runner"><div class="mono" style="color:var(--faint);font-size:12px">loading…</div></div>
@@ -301,8 +312,11 @@ function startBrowserView(name,b,s){
 /* modular dashboard: drag (grip) to reorder, edges to resize, layout saved */
 let GRID;
 try{
-  GRID=GridStack.init({column:12,cellHeight:64,margin:8,handle:'.grip',draggable:{handle:'.grip'},resizable:{handles:'e,se,s,sw,w'},float:true});
-  const KEY='lab-layout-v1', saved=localStorage.getItem(KEY);
+  GRID=GridStack.init({column:12,cellHeight:32,margin:8,float:false,
+    handle:'.hd',draggable:{handle:'.hd',cancel:'.tab,.tabs,.maxbtn,a,button,input,select'},
+    resizable:{handles:'e,w,s,se,sw'},
+    columnOpts:{breakpointForWindow:true,breakpoints:[{w:820,c:1}]}});
+  const KEY='lab-layout-v2', saved=localStorage.getItem(KEY);
   if(saved){try{GRID.load(JSON.parse(saved));}catch(e){}}
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(GRID.save(false)));}catch(e){}};
   GRID.on('change',save); GRID.on('resizestop',save); GRID.on('dragstop',save);
