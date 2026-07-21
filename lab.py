@@ -263,8 +263,8 @@ def start_novnc(name, idx, url, profile):
 
 def novnc_url(name):
     d = _NOVNC.get(name)
-    return (f"http://127.0.0.1:{d['ws']}/vnc.html?autoconnect=1&resize=remote&reconnect=true"
-            f"&reconnect_delay=1000&show_dot=1") if d else None
+    # vnc_lite.html = the bare client: no toolbar/settings, scale=true fills the panel
+    return f"http://127.0.0.1:{d['ws']}/vnc_lite.html?scale=true&reconnect=true" if d else None
 
 _TTYD = {"proc": None, "port": int(os.environ.get("TTYD_PORT", "8973"))}
 

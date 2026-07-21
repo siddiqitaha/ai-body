@@ -85,8 +85,14 @@
   .tab{font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:5px 10px;cursor:pointer}
   .tab.on{color:var(--sys);border-color:color-mix(in srgb,var(--sys) 55%,var(--line))}
   .tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle}
-  .scrbody{border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--panel2);min-height:440px}
-  .scrbody iframe{width:100%;height:470px;border:0;display:block;background:#07090d}
+  .scrbody{border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--panel2);height:66vh;min-height:360px;resize:vertical}
+  .scrbody iframe{width:100%;height:100%;border:0;display:block;background:#07090d}
+  .scrbody .galwrap{height:100%;display:flex;flex-direction:column} .scrbody .galview{flex:1}
+  /* maximize the tool-screens card to fill the viewport */
+  .maxbtn{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:4px 9px;cursor:pointer;margin-left:8px}
+  .maxbtn:hover{color:var(--ink);border-color:var(--accent)}
+  .card.maxed{position:fixed;inset:12px;z-index:60;margin:0;overflow:auto;box-shadow:0 30px 80px -20px #000c}
+  .card.maxed .scrbody{height:calc(100vh - 120px)}
   .noembed{padding:34px 22px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.7}
   .noembed a{display:inline-block;margin-top:14px;background:var(--sys);color:var(--sys-ink);text-decoration:none;border-radius:9px;padding:10px 18px;font-weight:700}
   .galwrap{display:flex;flex-direction:column} .galbar{font-family:var(--mono);font-size:11px;color:var(--faint);padding:8px 10px;line-height:1.5} .galbar b{color:var(--ink)} .galbar a{color:var(--sys)}
@@ -107,8 +113,9 @@
     <p>Every button below hits your live governed stack for real — the verdict, the control that caught it, and the audit link are your tools' actual output.</p></div>
 
   <div class="card" style="margin-bottom:18px">
-    <div class="hd"><h2>Live tool screens</h2><span class="r" id="scr-r">the real UIs, in-page</span>
-      <div class="tabs" id="scr-tabs"></div></div>
+    <div class="hd"><h2>Live tool screens</h2>
+      <div class="tabs" id="scr-tabs"></div>
+      <button class="maxbtn" id="scrMax" title="maximize / restore">⛶ maximize</button></div>
     <div class="bd"><div id="scr-body" class="scrbody"></div></div>
   </div>
 
@@ -276,6 +283,10 @@ function startBrowserView(name,b,s){
   }catch(e){}};
   poll(); GAL.timer=setInterval(poll,250);
 }
+
+/* maximize the tool-screens card */
+$('#scrMax').onclick=()=>{const c=$('#scrMax').closest('.card');const on=c.classList.toggle('maxed');$('#scrMax').textContent=on?'⛶ restore':'⛶ maximize';};
+addEventListener('keydown',e=>{if(e.key==='Escape'){const c=document.querySelector('.card.maxed');if(c){c.classList.remove('maxed');$('#scrMax').textContent='⛶ maximize';}}});
 
 /* boot */
 (async()=>{const acUp=await discover();await loadRunner(acUp);await loadScreens();setInterval(async()=>{await discover();},5000);})();
