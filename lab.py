@@ -11,14 +11,49 @@ Env (all optional, sane local defaults):
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import re
+import shutil
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+_TTYD = {"proc": None, "port": int(os.environ.get("TTYD_PORT", "8973"))}
+
+
+def start_ttyd():
+    """Serve DefenseClaw's real TUI in the browser (read-only) via ttyd, if both are installed."""
+    if _TTYD["proc"] or not shutil.which("ttyd") or not shutil.which("defenseclaw"):
+        return
+    try:
+        _TTYD["proc"] = subprocess.Popen(
+            ["ttyd", "-p", str(_TTYD["port"]), "-i", "127.0.0.1", "-t", "fontSize=13",
+             "-t", "theme={\"background\":\"#07090d\"}", "defenseclaw", "tui"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)          # no -W -> read-only
+        atexit.register(lambda: _TTYD["proc"] and _TTYD["proc"].terminate())
+    except Exception:
+        _TTYD["proc"] = None
+
+
+def screens() -> dict:
+    """The real tool screens: which embed, which open-in-tab, and why."""
+    tt = _TTYD["proc"] is not None
+    return {
+        "agent_control": {"name": "Agent Control", "embed": True,
+                          "url": CFG["ac_base"] + "/", "why": "real web UI, frames cleanly"},
+        "defenseclaw": {"name": "DefenseClaw TUI", "embed": tt,
+                        "url": f"http://127.0.0.1:{_TTYD['port']}/" if tt else "",
+                        "why": "real terminal via ttyd (read-only)" if tt else "install ttyd + defenseclaw to embed"},
+        "splunk": {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
+                   "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab (or use an official embed token)"},
+        "galileo": {"name": "Galileo", "embed": False, "url": CFG["galileo_base"] or "",
+                    "why": "cloud SaaS — connect via API or a server-side browser layer"},
+    }
 
 HERE = Path(__file__).parent
 DC_CONFIG = Path.home() / ".defenseclaw" / "config.yaml"
@@ -214,6 +249,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, discover())
         if self.path == "/api/scenarios":
             return self._send(200, [{k: s[k] for k in ("id", "label", "kind", "shows")} for s in SCENARIOS])
+        if self.path == "/api/screens":
+            return self._send(200, screens())
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -229,7 +266,8 @@ class H(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("LAB_PORT", "8972"))
-    print(f"Governed Agents Lab -> http://127.0.0.1:{port}")
+    start_ttyd()
+    print(f"Governed Agents Lab -> http://127.0.0.1:{port}  (DefenseClaw TUI on :{_TTYD['port']})")
     ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
 
 

@@ -80,6 +80,15 @@
   .tool a{margin-left:2px;font-family:var(--mono);font-size:10px;color:var(--sys);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
   .tool .role{font-family:var(--mono);font-size:9.5px;color:var(--faint);font-weight:400}
   .note{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:12px;line-height:1.6}
+  /* screens */
+  .hd .tabs{display:flex;gap:6px;flex-wrap:wrap} .card .hd .r{margin-left:auto}
+  .tab{font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:5px 10px;cursor:pointer}
+  .tab.on{color:var(--sys);border-color:color-mix(in srgb,var(--sys) 55%,var(--line))}
+  .tab .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .scrbody{border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--panel2);min-height:440px}
+  .scrbody iframe{width:100%;height:470px;border:0;display:block;background:#07090d}
+  .noembed{padding:34px 22px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.7}
+  .noembed a{display:inline-block;margin-top:14px;background:var(--sys);color:var(--sys-ink);text-decoration:none;border-radius:9px;padding:10px 18px;font-weight:700}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -92,6 +101,12 @@
 <div class="wrap">
   <div class="lead"><h1>Fire a real attack. Watch the box <span class="u">stop it.</span></h1>
     <p>Every button below hits your live governed stack for real — the verdict, the control that caught it, and the audit link are your tools' actual output.</p></div>
+
+  <div class="card" style="margin-bottom:18px">
+    <div class="hd"><h2>Live tool screens</h2><span class="r" id="scr-r">the real UIs, in-page</span>
+      <div class="tabs" id="scr-tabs"></div></div>
+    <div class="bd"><div id="scr-body" class="scrbody"></div></div>
+  </div>
 
   <div class="cols">
     <!-- STAGE -->
@@ -217,8 +232,24 @@ function renderSlab(r){
     </div>`;
 }
 
+/* screens */
+let SCREENS={};
+async function loadScreens(){
+  SCREENS=await API('/api/screens');
+  const order=['agent_control','defenseclaw','splunk','galileo'];
+  $('#scr-tabs').innerHTML=order.map((k,i)=>{const s=SCREENS[k];return `<button class="tab ${i===0?'on':''}" data-k="${k}"><span class="dot" style="background:${s.embed?'var(--allow)':'var(--warn)'}"></span>${s.name}</button>`;}).join('');
+  document.querySelectorAll('#scr-tabs .tab').forEach(t=>t.onclick=()=>showScreen(t.dataset.k));
+  showScreen('agent_control');
+}
+function showScreen(k){
+  document.querySelectorAll('#scr-tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.k===k));
+  const s=SCREENS[k],b=$('#scr-body');
+  if(s.embed&&s.url){ b.innerHTML=`<iframe src="${s.url}" title="${s.name}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`; }
+  else { b.innerHTML=`<div class="noembed">${s.name}<br><span style="color:var(--faint)">${s.why}</span>${s.url?`<br><a href="${s.url}" target="_blank" rel="noopener">open ${s.name} ↗</a>`:''}</div>`; }
+}
+
 /* boot */
-(async()=>{const acUp=await discover();await loadRunner(acUp);setInterval(async()=>{const u=await discover();},5000);})();
+(async()=>{const acUp=await discover();await loadRunner(acUp);await loadScreens();setInterval(async()=>{await discover();},5000);})();
 </script>
 </body>
 </html>
