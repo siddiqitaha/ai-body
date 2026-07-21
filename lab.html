@@ -89,6 +89,10 @@
   .scrbody iframe{width:100%;height:470px;border:0;display:block;background:#07090d}
   .noembed{padding:34px 22px;text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.7}
   .noembed a{display:inline-block;margin-top:14px;background:var(--sys);color:var(--sys-ink);text-decoration:none;border-radius:9px;padding:10px 18px;font-weight:700}
+  .galwrap{display:flex;flex-direction:column} .galbar{font-family:var(--mono);font-size:11px;color:var(--faint);padding:8px 10px;line-height:1.5} .galbar b{color:var(--ink)} .galbar a{color:var(--sys)}
+  .galview{position:relative;background:#0a0e14;min-height:440px;outline:none;cursor:crosshair;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+  .galview:focus{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--sys) 45%,transparent)}
+  .galview img{width:100%;display:none} .galmsg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-family:var(--mono);font-size:12px;color:var(--dim);padding:20px;line-height:1.6}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -241,11 +245,33 @@ async function loadScreens(){
   document.querySelectorAll('#scr-tabs .tab').forEach(t=>t.onclick=()=>showScreen(t.dataset.k));
   showScreen('agent_control');
 }
+let GAL={timer:null,w:1360,h:820};
+function stopGalileo(){ if(GAL.timer){clearInterval(GAL.timer);GAL.timer=null;} }
 function showScreen(k){
   document.querySelectorAll('#scr-tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.k===k));
+  stopGalileo();
   const s=SCREENS[k],b=$('#scr-body');
+  if(k==='galileo'){ return startGalileo(b,s); }
   if(s.embed&&s.url){ b.innerHTML=`<iframe src="${s.url}" title="${s.name}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`; }
   else { b.innerHTML=`<div class="noembed">${s.name}<br><span style="color:var(--faint)">${s.why}</span>${s.url?`<br><a href="${s.url}" target="_blank" rel="noopener">open ${s.name} ↗</a>`:''}</div>`; }
+}
+function startGalileo(b,s){
+  b.innerHTML=`<div class="galwrap"><div class="galbar">real Galileo console — a headless browser on the box. <b>Log in once</b>, your session sticks. Click / type / scroll work here.</div>
+    <div class="galview" id="galview" tabindex="0"><img id="gframe" alt="Galileo"><div class="galmsg" id="galmsg">starting the browser…</div></div>
+    <div class="galbar"><a href="${s.url}" target="_blank" rel="noopener">or open Galileo in a new tab ↗</a></div></div>`;
+  const img=$('#gframe'), view=$('#galview'), msg=$('#galmsg');
+  const send=(body)=>fetch('/api/galileo/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{if(r.w){GAL.w=r.w;GAL.h=r.h;}}).catch(()=>{});
+  const map=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*GAL.w),y:Math.round((e.clientY-r.top)/r.height*GAL.h)};};
+  view.onclick=e=>{const p=map(e);send({type:'click',...p});view.focus();};
+  view.onwheel=e=>{e.preventDefault();send({type:'scroll',dy:Math.round(e.deltaY)});};
+  view.onkeydown=e=>{const sp={'Enter':'Enter','Backspace':'Backspace','Tab':'Tab','Escape':'Escape','ArrowUp':'ArrowUp','ArrowDown':'ArrowDown','ArrowLeft':'ArrowLeft','ArrowRight':'ArrowRight','Delete':'Delete'};
+    if(sp[e.key]){e.preventDefault();send({type:'key',key:sp[e.key]});} else if(e.key.length===1){e.preventDefault();send({type:'type',text:e.key});}};
+  const poll=async()=>{try{const r=await fetch('/api/galileo/frame?t='+Date.now());
+    if(r.status===200){const bl=await r.blob();const u=URL.createObjectURL(bl);const old=img.src;img.src=u;if(old.startsWith('blob:'))URL.revokeObjectURL(old);img.style.display='block';msg.style.display='none';}
+    else if(r.status===202){msg.textContent='starting the browser… (first load can take ~10s)';}
+    else{const j=await r.json().catch(()=>({}));msg.innerHTML='browser-layer unavailable: '+(j.error||r.status)+'<br><span style="color:var(--faint)">run the lab with Playwright installed (see note), or use the open-in-tab link above.</span>';}
+  }catch(e){}};
+  poll(); GAL.timer=setInterval(poll,900);
 }
 
 /* boot */

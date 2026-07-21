@@ -15,6 +15,7 @@ import atexit
 import http.client
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -24,6 +25,72 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+GALILEO_PROFILE = os.environ.get("GALILEO_PROFILE", str(Path.home() / ".lab-galileo-profile"))
+
+
+class GalileoBrowser:
+    """The browser-layer: a headless Chromium on the box with a PERSISTENT profile (log in to Galileo
+    once, it sticks), streamed into the lab as JPEG frames with click/type/scroll forwarded back.
+    Everything runs in one thread that owns the page (sync Playwright is not thread-safe)."""
+
+    def __init__(self, url: str, profile: str, w: int = 1360, h: int = 820) -> None:
+        self.url, self.profile, self.w, self.h = url, profile, w, h
+        self.q: queue.Queue = queue.Queue()
+        self.ready, self.err = False, None
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except Exception as e:
+            self.err = f"playwright not installed ({e})"; return
+        try:
+            with sync_playwright() as p:
+                ctx = p.chromium.launch_persistent_context(
+                    self.profile, headless=True, viewport={"width": self.w, "height": self.h},
+                    args=["--disable-dev-shm-usage"])
+                page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                page.goto(self.url, timeout=45000, wait_until="domcontentloaded")
+                self.ready = True
+                while True:
+                    name, args, rq = self.q.get()
+                    try:
+                        if name == "shot":
+                            r = page.screenshot(type="jpeg", quality=55)
+                        elif name == "click":
+                            page.mouse.click(args["x"], args["y"]); r = b"ok"
+                        elif name == "type":
+                            page.keyboard.type(args["text"]); r = b"ok"
+                        elif name == "key":
+                            page.keyboard.press(args["key"]); r = b"ok"
+                        elif name == "scroll":
+                            page.mouse.wheel(0, args["dy"]); r = b"ok"
+                        elif name == "nav":
+                            page.goto(args["url"], timeout=45000); r = b"ok"
+                        else:
+                            r = b""
+                    except Exception as e:
+                        r = ("err:" + str(e)).encode()
+                    rq.put(r)
+        except Exception as e:
+            self.err = str(e)
+
+    def do(self, name, **args):
+        rq: queue.Queue = queue.Queue()
+        self.q.put((name, args, rq))
+        return rq.get(timeout=45)
+
+
+_GALILEO = {"browser": None, "lock": threading.Lock()}
+
+
+def galileo_browser():
+    with _GALILEO["lock"]:
+        if _GALILEO["browser"] is None:
+            _GALILEO["browser"] = GalileoBrowser(CFG["galileo_base"] or "https://console.galileo.ai",
+                                                 GALILEO_PROFILE)
+    return _GALILEO["browser"]
 
 SPLUNK_PROXY_PORT = int(os.environ.get("SPLUNK_PROXY_PORT", "8074"))
 
@@ -128,7 +195,7 @@ CFG = {
     "model_base": os.environ.get("MODEL_BASE", "http://127.0.0.1:8012/v1"),
     "splunk_web": os.environ.get("SPLUNK_WEB", "http://127.0.0.1:8090/"),
     "openclaw_base": os.environ.get("OPENCLAW_BASE", ""),   # e.g. http://127.0.0.1:19289
-    "galileo_base": os.environ.get("GALILEO_BASE", "https://console.galileo.ai"),
+    "galileo_base": os.environ.get("GALILEO_BASE", "https://app.galileo.ai"),
 }
 
 
@@ -314,6 +381,16 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, [{k: s[k] for k in ("id", "label", "kind", "shows")} for s in SCENARIOS])
         if self.path == "/api/screens":
             return self._send(200, screens())
+        if self.path.startswith("/api/galileo/frame"):
+            gb = galileo_browser()
+            if gb.err:
+                return self._send(503, {"error": gb.err})
+            if not gb.ready:
+                return self._send(202, {"status": "starting"})
+            img = gb.do("shot")
+            if isinstance(img, bytes) and img[:2] == b"\xff\xd8":
+                return self._send(200, img, "image/jpeg")
+            return self._send(503, {"error": img.decode(errors="replace") if isinstance(img, bytes) else "no frame"})
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -324,6 +401,20 @@ class H(BaseHTTPRequestHandler):
             b = {}
         if self.path == "/api/fire":
             return self._send(200, fire(b.get("scenario", "")))
+        if self.path == "/api/galileo/input":
+            gb = galileo_browser()
+            if not gb.ready:
+                return self._send(202, {"status": "starting"})
+            t = b.get("type")
+            if t == "click":
+                gb.do("click", x=b.get("x", 0), y=b.get("y", 0))
+            elif t == "type":
+                gb.do("type", text=b.get("text", ""))
+            elif t == "key":
+                gb.do("key", key=b.get("key", ""))
+            elif t == "scroll":
+                gb.do("scroll", dy=b.get("dy", 0))
+            return self._send(200, {"ok": True, "w": gb.w, "h": gb.h})
         self._send(404, {"error": "not found"})
 
 

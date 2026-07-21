@@ -14,3 +14,6 @@ crossover.py          # private crossover runner (live guards + real brain), not
 
 # private cross-launch list (your real tool URLs); ship apps.json.example instead
 apps.json
+
+# local playwright venv for the Galileo browser-layer (rebuildable: uv venv .labenv && uv pip install playwright)
+.labenv/
