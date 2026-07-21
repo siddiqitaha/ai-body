@@ -20,6 +20,12 @@ together under one set of rules.
 - **Governed autonomy.** Two caged workers (read-only researcher + write-capable coder) run behind
   per-worker tool allowlists, deny-by-default delegation, and learning that only flows inward.
 
+**Play with it (zero deps):** `python3 dashboard.py` opens a **control room** at `localhost:8971` —
+see every port and guard, flip guards on and off, **attach your own scanner** ("claw"), fire requests
+(or click a scenario: prompt injection, secret exfil, `curl | sh`), and watch each **verdict + trace**
+land live. No model, no infra, no keys required; if nothing is reachable the Model port degrades to an
+echo so it always runs.
+
 **60-second look:** `python3 accept.py` runs all 15 definition-of-done checks and prints a green board;
 the [live architecture page](https://siddiqitaha.github.io/ai-body/) is the visual. Details below.
 
@@ -169,6 +175,7 @@ delegation, and `doctor`. All green = proven.
 | `acquire.py` | the acquire funnel (invariant 6): quarantine → scan → fingerprint → sandbox; `build_toolbox()` arms the live tool port |
 | `router.py` | tier-aware model routing: private-by-default → local, non-sensitive may offload to cloud, fail-closed |
 | `serve.py` | run the governed stack over HTTP (the `HTTPSurface` network door) |
+| `dashboard.py` + `dashboard.html` | the control room: one screen to see every port/guard, toggle guards, attach your own scanner, fire requests, watch verdicts + traces live |
 | `observ.py` | the eval store (verdicts) + OTLP trace export (fails open) |
 | `doctor.py` | enumerates every guard, fails nonzero if none is provably live |
 | `calibrate.py` | the promote-before-blocking gate (Se/Sp ≥ 0.90 on ≥ 50 labels) |
