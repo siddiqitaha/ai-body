@@ -202,30 +202,37 @@ def start_ac_proxy():
 _TTYD = {"proc": None, "port": int(os.environ.get("TTYD_PORT", "8973"))}
 
 
+def _ttyd_up() -> bool:
+    return _probe(f"http://127.0.0.1:{_TTYD['port']}/", timeout=2)[0]
+
+
 def start_ttyd():
-    """Serve DefenseClaw's real TUI in the browser (read-only) via ttyd, if both are installed."""
-    if _TTYD["proc"] or not shutil.which("ttyd") or not shutil.which("defenseclaw"):
+    """Serve DefenseClaw's real TUI via ttyd. If a ttyd is already on the port (e.g. a prior lab),
+    REUSE it instead of failing. Writable (-W) so you can navigate the Textual dashboard."""
+    if _ttyd_up():                       # already serving -> reuse it, don't spawn a duplicate
+        _TTYD["proc"] = "external"
+        return
+    if not shutil.which("ttyd") or not shutil.which("defenseclaw"):
         return
     try:
         p = subprocess.Popen(
             ["ttyd", "-W", "-p", str(_TTYD["port"]), "-i", "127.0.0.1", "-t", "fontSize=13",
              "-t", "theme={\"background\":\"#07090d\"}", "defenseclaw", "tui"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   # -W: writable so you can navigate the TUI
-
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         import time
-        time.sleep(0.4)
-        if p.poll() is not None:      # died immediately (e.g. port busy) -> don't advertise it
+        time.sleep(0.6)
+        if p.poll() is not None:         # died immediately -> not embeddable
             _TTYD["proc"] = None
             return
         _TTYD["proc"] = p
-        atexit.register(lambda: _TTYD["proc"] and _TTYD["proc"].terminate())
+        atexit.register(lambda: hasattr(_TTYD["proc"], "terminate") and _TTYD["proc"].terminate())
     except Exception:
         _TTYD["proc"] = None
 
 
 def screens() -> dict:
     """The real tool screens: which embed, which open-in-tab, and why."""
-    tt = _TTYD["proc"] is not None
+    tt = _ttyd_up()
     return {
         "agent_control": {"name": "Agent Control", "embed": True,
                           "url": (f"http://127.0.0.1:{AC_PROXY_PORT}/" if _AC_PROXY["up"] else CFG["ac_base"] + "/"),
