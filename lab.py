@@ -418,7 +418,42 @@ class H(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
 
+def _ensure_playwright():
+    """Make `python3 lab.py` just work: if Playwright isn't importable, build a local venv, install
+    it + Chromium, and re-exec under that venv. Best-effort — if setup fails, the lab still runs and
+    Galileo simply falls back to the open-in-tab link. Guarded against re-exec loops."""
+    import sys
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(Path.home() / ".cache" / "ms-playwright"))
+    try:
+        import playwright  # noqa: F401
+        return
+    except Exception:
+        pass
+    if os.environ.get("LAB_BOOTSTRAPPED"):
+        print("  (Galileo browser-layer off: Playwright unavailable — the other 3 screens still work)")
+        return
+    venv = Path(__file__).parent / ".labenv"
+    vpy = venv / "bin" / "python"
+    try:
+        if not vpy.exists():
+            print("  first run: setting up the Galileo browser-layer (Playwright)…")
+            uv = shutil.which("uv")
+            if uv:
+                subprocess.run([uv, "venv", str(venv)], check=True)
+                subprocess.run([uv, "pip", "install", "--python", str(vpy), "playwright"], check=True)
+            else:
+                subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+                subprocess.run([str(vpy), "-m", "pip", "install", "playwright"], check=True)
+            subprocess.run([str(vpy), "-m", "playwright", "install", "chromium"],
+                           env={**os.environ}, check=False)
+        os.environ["LAB_BOOTSTRAPPED"] = "1"
+        os.execv(str(vpy), [str(vpy), str(Path(__file__).resolve()), *sys.argv[1:]])
+    except Exception as e:
+        print(f"  (Galileo browser-layer setup skipped: {e} — other screens still work)")
+
+
 def main():
+    _ensure_playwright()
     port = int(os.environ.get("LAB_PORT", "8972"))
     start_ttyd()
     if start_splunk_proxy():
