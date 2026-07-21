@@ -252,7 +252,8 @@ function showScreen(k){
   stopGalileo();
   const s=SCREENS[k],b=$('#scr-body');
   if(k==='galileo'){ return startGalileo(b,s); }
-  if(s.embed&&s.url){ b.innerHTML=`<iframe src="${s.url}" title="${s.name}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`; }
+  if(s.embed&&s.url){ b.innerHTML=`<iframe src="${s.url}" title="${s.name}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`+
+    (s.tab_url?`<div class="galbar" style="border-top:1px solid var(--line2)">${s.why||''} · <a href="${s.tab_url}" target="_blank" rel="noopener">open in a new tab ↗</a></div>`:''); }
   else { b.innerHTML=`<div class="noembed">${s.name}<br><span style="color:var(--faint)">${s.why}</span>${s.url?`<br><a href="${s.url}" target="_blank" rel="noopener">open ${s.name} ↗</a>`:''}</div>`; }
 }
 function startGalileo(b,s){

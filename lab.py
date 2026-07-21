@@ -223,7 +223,8 @@ def screens() -> dict:
                         "url": f"http://127.0.0.1:{_TTYD['port']}/" if tt else "",
                         "why": "real terminal via ttyd (read-only)" if tt else "install ttyd + defenseclaw to embed"},
         "splunk": ({"name": "Splunk", "embed": True, "url": f"http://127.0.0.1:{SPLUNK_PROXY_PORT}/",
-                    "why": "real Splunk, framed via a header-stripping proxy (your local instance)"}
+                    "tab_url": CFG["splunk_web"],
+                    "why": "real Splunk (framed via proxy). Cookie error? open in a fresh/incognito window — 127.0.0.1 cookies clash across ports"}
                    if _SPLUNK_PROXY["up"] else
                    {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
                     "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab"}),
@@ -240,7 +241,7 @@ CFG = {
     "ac_key": os.environ.get("AC_KEY", os.environ.get("AIBODY_AC_KEY", "")),
     "model_base": os.environ.get("MODEL_BASE", "http://127.0.0.1:8012/v1"),
     "splunk_web": os.environ.get("SPLUNK_WEB", "http://127.0.0.1:8090/"),
-    "openclaw_base": os.environ.get("OPENCLAW_BASE", ""),   # e.g. http://127.0.0.1:19289
+    "openclaw_base": os.environ.get("OPENCLAW_BASE", "http://127.0.0.1:18789"),   # OpenClaw gateway
     "galileo_base": os.environ.get("GALILEO_BASE", "https://app.galileo.ai"),
 }
 
@@ -279,7 +280,7 @@ def _dc_config() -> dict:
 def _agents() -> list[dict]:
     """Discover governed agents from Agent Control (authoritative), else OpenClaw's model list."""
     agents = []
-    up, _, body = _probe(CFG["ac_base"] + "/api/v1/agents", key=CFG["ac_key"] or None)
+    up, _, body = _probe(CFG["ac_base"] + "/api/v1/agents", key=_ac_key() or None)
     if up and body:
         try:
             rows = json.loads(body)
@@ -287,19 +288,10 @@ def _agents() -> list[dict]:
             for a in rows:
                 name = a.get("agent_name") or a.get("name") or a.get("id")
                 if name:
-                    agents.append({"name": name, "governed": True, "src": "Agent Control"})
+                    agents.append({"name": name, "governed": (a.get("active_controls_count", 0) or 0) > 0,
+                                   "src": "Agent Control"})
         except Exception:
             pass
-    if not agents and CFG["openclaw_base"]:
-        up, _, body = _probe(CFG["openclaw_base"] + "/v1/models")
-        if up and body:
-            try:
-                for m in json.loads(body).get("data", []):
-                    mid = str(m.get("id", ""))
-                    if mid.startswith("openclaw/"):
-                        agents.append({"name": mid.split("/", 1)[1], "governed": True, "src": "OpenClaw"})
-            except Exception:
-                pass
     return agents
 
 
@@ -370,6 +362,7 @@ def discover() -> dict:
     model_up, _, model_body = _probe(CFG["model_base"] + "/models")
     splunk_up = _probe(CFG["splunk_web"], timeout=3)[0]
     oc_up = _probe(CFG["openclaw_base"] + "/v1/models")[0] if CFG["openclaw_base"] else False
+    galileo_up = _probe(CFG["galileo_base"], timeout=4)[0] if CFG["galileo_base"] else False
     agents = _agents()
 
     model_name = "local model"
@@ -389,8 +382,8 @@ def discover() -> dict:
         {"id": "model", "kind": "model", "name": model_name, "up": model_up, "detail": "the LLM", "action": None},
         {"id": "splunk", "kind": "audit", "name": "Splunk", "up": splunk_up,
          "detail": dc["splunk"] or "audit", "action": {"label": "open Splunk", "url": CFG["splunk_web"]}},
-        {"id": "galileo", "kind": "audit", "name": "Galileo", "up": bool(CFG["galileo_base"]),
-         "detail": "traces (connect a token)", "action": None},
+        {"id": "galileo", "kind": "audit", "name": "Galileo", "up": galileo_up,
+         "detail": "traces (cloud)", "action": {"label": "open Galileo", "url": CFG["galileo_base"]}},
     ]
     checklist = [
         {"step": "DefenseClaw running", "done": dc_up, "how": "systemctl --user start defenseclaw-gateway"},
@@ -399,8 +392,8 @@ def discover() -> dict:
          "how": "cd ~/projects/multi-agent && ./up.sh"},
         {"step": "Agents discovered", "done": bool(agents), "how": "up.sh registers them; then they appear in the box"},
         {"step": "Splunk audit reachable", "done": splunk_up, "how": "ships with DefenseClaw (local Splunk)"},
-        {"step": "Galileo connected", "done": bool(CFG["galileo_base"]),
-         "how": "set GALILEO_BASE + token to stream traces"},
+        {"step": "Galileo reachable", "done": galileo_up,
+         "how": "cloud console — the Galileo tab streams it; log in once"},
     ]
     return {"components": comps, "agents": agents, "checklist": checklist,
             "ready": sum(1 for c in checklist if c["done"]), "total": len(checklist),
