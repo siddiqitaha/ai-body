@@ -502,6 +502,12 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             return self._send(200, (HERE / "lab.html").read_bytes(), "text/html; charset=utf-8")
+        if self.path.startswith("/vendor/"):
+            fp = HERE / "vendor" / os.path.basename(self.path)
+            if fp.exists() and fp.parent == HERE / "vendor":
+                ct = "text/css" if fp.suffix == ".css" else "application/javascript"
+                return self._send(200, fp.read_bytes(), ct)
+            return self._send(404, {"error": "not found"})
         if self.path == "/api/discover":
             return self._send(200, discover())
         if self.path == "/api/scenarios":

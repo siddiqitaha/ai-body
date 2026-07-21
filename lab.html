@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Governed Agents — Lab</title>
+<link rel="stylesheet" href="/vendor/gridstack.min.css">
 <style>
   :root{
     --bg:#090c12;--bg2:#0c1017;--panel:#111823;--panel2:#0d131c;--line:#1e2836;--line2:#161e29;
@@ -89,6 +90,16 @@
   .scrbody iframe{width:100%;height:100%;border:0;display:block;background:#07090d}
   .scrbody .galwrap{height:100%;display:flex;flex-direction:column} .scrbody .galview{flex:1}
   /* maximize the tool-screens card to fill the viewport */
+  /* modular grid (reorder + resize) */
+  .grid-stack{background:transparent}
+  .grid-stack-item-content{overflow:hidden;display:flex;border-radius:16px}
+  .grid-stack-item-content>.card{flex:1;margin:0;display:flex;flex-direction:column;min-height:0;box-shadow:none}
+  .grid-stack-item-content>.card>.bd{flex:1;min-height:0;overflow:auto}
+  .grid-stack-item-content>.card>.hd{cursor:default}
+  .grid-stack .scrbody{height:100%;resize:none}
+  .grip{font-family:var(--mono);color:var(--faint);cursor:grab;padding:0 6px 0 0;user-select:none;font-size:15px}
+  .grip:active{cursor:grabbing}
+  .grid-stack-item.ui-resizable-resizing,.grid-stack-item.ui-draggable-dragging{opacity:.85}
   .maxbtn{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:4px 9px;cursor:pointer;margin-left:8px}
   .maxbtn:hover{color:var(--ink);border-color:var(--accent)}
   .card.maxed{position:fixed;inset:12px;z-index:60;margin:0;overflow:auto;box-shadow:0 30px 80px -20px #000c}
@@ -112,34 +123,37 @@
   <div class="lead"><h1>Fire a real attack. Watch the box <span class="u">stop it.</span></h1>
     <p>Every button below hits your live governed stack for real — the verdict, the control that caught it, and the audit link are your tools' actual output.</p></div>
 
-  <div class="card" style="margin-bottom:18px">
-    <div class="hd"><h2>Live tool screens</h2>
-      <div class="tabs" id="scr-tabs"></div>
-      <button class="maxbtn" id="scrMax" title="maximize / restore">⛶ maximize</button></div>
-    <div class="bd"><div id="scr-body" class="scrbody"></div></div>
-  </div>
-
-  <div class="cols">
-    <!-- STAGE -->
-    <div class="card">
-      <div class="hd"><h2>The governed box</h2><span class="r" id="boxr">live</span></div>
-      <div class="bd">
-        <div class="stage">
-          <svg id="box" viewBox="0 0 900 340" aria-label="governed box: world, gate guards, agents, audit"></svg>
+  <div class="grid-stack" id="grid">
+    <div class="grid-stack-item" gs-id="screens" gs-x="0" gs-y="0" gs-w="12" gs-h="8">
+      <div class="grid-stack-item-content"><div class="card">
+        <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Live tool screens</h2>
+          <div class="tabs" id="scr-tabs"></div>
+          <button class="maxbtn" id="scrMax" title="maximize / restore">⛶ maximize</button></div>
+        <div class="bd"><div id="scr-body" class="scrbody"></div></div>
+      </div></div>
+    </div>
+    <div class="grid-stack-item" gs-id="box" gs-x="0" gs-y="8" gs-w="7" gs-h="7">
+      <div class="grid-stack-item-content"><div class="card">
+        <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>The governed box</h2><span class="r" id="boxr">live</span></div>
+        <div class="bd">
+          <div class="stage"><svg id="box" viewBox="0 0 900 340" aria-label="governed box"></svg></div>
+          <div class="slab idle" id="slab"><div class="body">▸ pick an attack on the right and fire it — the verdict lands here.</div></div>
+          <div class="strip" id="tools"></div>
+          <div class="note" id="note"></div>
         </div>
-        <div class="slab idle" id="slab"><div class="body">▸ pick an attack on the right and fire it — the verdict lands here.</div></div>
-        <div class="strip" id="tools"></div>
-        <div class="note" id="note"></div>
-      </div>
+      </div></div>
     </div>
-
-    <!-- RUNNER -->
-    <div class="card runner">
-      <div class="hd"><h2>Fire a real attack</h2><span class="r">→ live Agent Control</span></div>
-      <div class="bd" id="runner"><div class="mono" style="color:var(--faint);font-size:12px">loading…</div></div>
+    <div class="grid-stack-item" gs-id="runner" gs-x="7" gs-y="8" gs-w="5" gs-h="7">
+      <div class="grid-stack-item-content"><div class="card">
+        <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Fire a real attack</h2><span class="r">→ live Agent Control</span></div>
+        <div class="bd" id="runner"><div class="mono" style="color:var(--faint);font-size:12px">loading…</div></div>
+      </div></div>
     </div>
   </div>
+  <div style="text-align:right;margin-top:8px"><button class="maxbtn" id="resetLayout" title="reset layout">↺ reset layout</button></div>
 </div>
+
+<script src="/vendor/gridstack-all.js"></script>
 
 <script>
 const $=s=>document.querySelector(s), SVGNS="http://www.w3.org/2000/svg";
@@ -283,6 +297,17 @@ function startBrowserView(name,b,s){
   }catch(e){}};
   poll(); GAL.timer=setInterval(poll,250);
 }
+
+/* modular dashboard: drag (grip) to reorder, edges to resize, layout saved */
+let GRID;
+try{
+  GRID=GridStack.init({column:12,cellHeight:64,margin:8,handle:'.grip',draggable:{handle:'.grip'},resizable:{handles:'e,se,s,sw,w'},float:true});
+  const KEY='lab-layout-v1', saved=localStorage.getItem(KEY);
+  if(saved){try{GRID.load(JSON.parse(saved));}catch(e){}}
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(GRID.save(false)));}catch(e){}};
+  GRID.on('change',save); GRID.on('resizestop',save); GRID.on('dragstop',save);
+  const rl=document.querySelector('#resetLayout'); if(rl)rl.onclick=()=>{localStorage.removeItem(KEY);location.reload();};
+}catch(e){}
 
 /* maximize the tool-screens card */
 $('#scrMax').onclick=()=>{const c=$('#scrMax').closest('.card');const on=c.classList.toggle('maxed');$('#scrMax').textContent=on?'⛶ restore':'⛶ maximize';};
