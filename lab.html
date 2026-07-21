@@ -111,6 +111,21 @@
   .ui-resizable-e:after{right:3px}.ui-resizable-w:after{left:3px}
   .ui-resizable-s:after{content:"";position:absolute;left:50%;transform:translateX(-50%);bottom:3px;width:36px;height:4px;border-radius:3px;background:color-mix(in srgb,var(--sys) 60%,transparent)}
   .tab:focus-visible,.fire:focus-visible,.maxbtn:focus-visible{outline:2px solid var(--sys);outline-offset:2px}
+  /* governance controls panel */
+  .ctrl{display:grid;grid-template-columns:1fr auto;gap:10px 14px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel2)}
+  .ctrl .cn{font-weight:650;font-size:14px} .ctrl .cby{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:6px;text-transform:uppercase;letter-spacing:.06em}
+  .ctrl .cc{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:3px}
+  .ctrl .cres{font-family:var(--mono);font-size:12px;margin-top:6px;font-weight:600} .cres.deny{color:var(--deny)} .cres.allow{color:var(--allow)}
+  .cact{display:flex;align-items:center;gap:12px}
+  .cact .test{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--sys);border-radius:8px;padding:8px 12px;cursor:pointer;white-space:nowrap}
+  .cact .test:hover{border-color:var(--sys)}
+  .tog{position:relative;width:44px;height:24px;flex:none;cursor:pointer} .tog input{opacity:0;width:0;height:0}
+  .tog .sl{position:absolute;inset:0;background:var(--line);border-radius:24px;transition:.15s} .tog .sl:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s}
+  .tog input:checked+.sl{background:var(--allow)} .tog input:checked+.sl:before{transform:translateX(20px)}
+  .toglbl{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:center;margin-top:2px}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line2)}
+  .fstep{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--line)} .fstep.allow{color:var(--allow);border-color:color-mix(in srgb,var(--allow) 40%,var(--line))} .fstep.deny{color:var(--deny);border-color:color-mix(in srgb,var(--deny) 45%,var(--line))}
+  .farr{color:var(--faint);font-family:var(--mono)}
   .maxbtn{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);border-radius:7px;padding:4px 9px;cursor:pointer;margin-left:8px}
   .maxbtn:hover{color:var(--ink);border-color:color-mix(in srgb,var(--sys) 45%,var(--line))}
   .card.maxed{position:fixed;inset:12px;z-index:60;margin:0;overflow:auto;box-shadow:0 30px 80px -20px #000c}
@@ -158,6 +173,12 @@
       <div class="grid-stack-item-content"><div class="card">
         <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Fire a real attack</h2><span class="r">→ live Agent Control</span></div>
         <div class="bd" id="runner"><div class="mono" style="color:var(--faint);font-size:12px">loading…</div></div>
+      </div></div>
+    </div>
+    <div class="grid-stack-item" gs-id="controls" gs-x="0" gs-y="30" gs-w="12" gs-h="9">
+      <div class="grid-stack-item-content"><div class="card">
+        <div class="hd"><span class="grip" title="drag to move">⠿</span><h2>Governance controls — flip a rule, watch the outcome change</h2><span class="r">live · Agent Control</span></div>
+        <div class="bd" id="controls"><div class="mono" style="color:var(--faint);font-size:12px">loading…</div></div>
       </div></div>
     </div>
   </div>
@@ -245,7 +266,8 @@ async function loadRunner(acUp){
 async function fire(id,btn){
   btn.disabled=true;btn.textContent='firing…';
   const r=await API('/api/fire',{scenario:id});
-  btn.disabled=false;btn.textContent='fire ▸';
+  window._lastFire=r;
+  btn.disabled=false;btn.textContent=btn.classList.contains('test')?'test the attack ▸':'fire ▸';
   if(r.error){renderSlab({error:r.error});return;}
   // animate
   const guard=r.control==='defenseclaw-inspect'?'dc':(r.control?'ac':null);
@@ -261,11 +283,32 @@ function renderSlab(r){
   s.className='slab '+(r.denied?'deny hit-deny':'allow hit-allow');
   s.innerHTML=`<div class="top"><span class="badge ${r.denied?'deny':'allow'}">${r.denied?'DENIED':'ALLOWED'}</span>
      <span class="who">caught by <b>${r.by}</b></span><span class="ver">stage: ${r.stage} · agent ${r.agent}</span></div>
+    ${r.flow&&r.flow.length?`<div class="flow">${r.flow.map(f=>`<span class="fstep ${f.verdict}" title="${f.by}">${f.label} ${f.verdict==='deny'?'🛑':'✓'}</span>`).join('<span class="farr">→</span>')}<span class="farr">→</span><span class="fstep ${r.denied?'deny':'allow'}">${r.denied?'blocked':'runs + audited'}</span></div>`:''}
     <div class="meta">
       <span class="k">control</span><span class="v ctrl">${r.control||'— (nothing objected)'}</span>
       <span class="k">what</span><span class="v">${r.label}</span>
       ${r.splunk?`<span class="k">audit</span><span class="v"><a class="sp" href="${r.splunk}" target="_blank" rel="noopener">view the event in Splunk ↗</a></span>`:''}
     </div>`;
+}
+
+/* governance controls: flip a rule, test the attack, watch it pass or get blocked */
+async function loadControls(){
+  const cs=await API('/api/controls');
+  $('#controls').innerHTML=cs.map(c=>`<div class="ctrl" id="ctrl-${c.id}">
+    <div><div class="cn">${c.label}<span class="cby">${c.by}</span></div>
+      <div class="cc">catches: ${c.catches}</div><div class="cres" id="cres-${c.id}"></div></div>
+    <div class="cact"><button class="test" data-s="${c.scenario}" data-id="${c.id}">test the attack ▸</button>
+      <div><label class="tog"><input type="checkbox" data-cid="${c.id}" ${c.on?'checked':''}><span class="sl"></span></label><div class="toglbl" id="tl-${c.id}">${c.on?'ON':'OFF'}</div></div></div>
+  </div>`).join('');
+  document.querySelectorAll('[data-cid]').forEach(el=>el.onchange=()=>toggleCtrl(el.dataset.cid,el.checked));
+  document.querySelectorAll('.cact .test').forEach(b=>b.onclick=()=>testCtrl(b.dataset.s,b.dataset.id,b));
+}
+async function toggleCtrl(id,on){$('#tl-'+id).textContent=on?'ON':'OFF';await API('/api/toggle-control',{id:+id,on});}
+async function testCtrl(scenario,id,btn){
+  await fire(scenario,btn);                       // reuse the same animation + verdict slab
+  const r=window._lastFire||{};const el=$('#cres-'+id);
+  el.className='cres '+(r.denied?'deny':'allow');
+  el.textContent=r.denied?('🛑 BLOCKED by '+r.by):'✅ ALLOWED — the attack got through';
 }
 
 /* screens */
@@ -328,7 +371,7 @@ $('#scrMax').onclick=()=>{const c=$('#scrMax').closest('.card');const on=c.class
 addEventListener('keydown',e=>{if(e.key==='Escape'){const c=document.querySelector('.card.maxed');if(c){c.classList.remove('maxed');$('#scrMax').textContent='⛶ maximize';}}});
 
 /* boot */
-(async()=>{const acUp=await discover();await loadRunner(acUp);await loadScreens();setInterval(async()=>{await discover();},5000);})();
+(async()=>{const acUp=await discover();await loadRunner(acUp);await loadScreens();await loadControls();setInterval(async()=>{await discover();},5000);})();
 </script>
 </body>
 </html>
