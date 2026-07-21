@@ -29,10 +29,11 @@ from pathlib import Path
 GALILEO_PROFILE = os.environ.get("GALILEO_PROFILE", str(Path.home() / ".lab-galileo-profile"))
 
 
-class GalileoBrowser:
-    """The browser-layer: a headless Chromium on the box with a PERSISTENT profile (log in to Galileo
-    once, it sticks), streamed into the lab as JPEG frames with click/type/scroll forwarded back.
-    Everything runs in one thread that owns the page (sync Playwright is not thread-safe)."""
+class RemoteBrowser:
+    """The browser-layer: a headless Chromium on the box with a PERSISTENT profile (its OWN cookie
+    jar, so no clash with your browser), streamed into the lab as JPEG frames via CDP screencast with
+    click/type/scroll forwarded back. One thread owns the page (sync Playwright is not thread-safe).
+    Used for any tool whose UI won't iframe cleanly (Galileo cloud SSO, Splunk cross-port cookies)."""
 
     def __init__(self, url: str, profile: str, w: int = 1200, h: int = 760) -> None:
         self.url, self.profile, self.w, self.h = url, profile, w, h
@@ -99,15 +100,26 @@ class GalileoBrowser:
         return rq.get(timeout=45)
 
 
-_GALILEO = {"browser": None, "lock": threading.Lock()}
+_BROWSERS: dict = {}
+_BROWSER_LOCK = threading.Lock()
 
 
-def galileo_browser():
-    with _GALILEO["lock"]:
-        if _GALILEO["browser"] is None:
-            _GALILEO["browser"] = GalileoBrowser(CFG["galileo_base"] or "https://console.galileo.ai",
-                                                 GALILEO_PROFILE)
-    return _GALILEO["browser"]
+def _browser_targets():
+    return {
+        "galileo": {"url": CFG["galileo_base"] or "https://app.galileo.ai", "profile": GALILEO_PROFILE},
+        "splunk": {"url": CFG["splunk_web"], "profile": str(Path.home() / ".lab-splunk-profile")},
+    }
+
+
+def get_browser(name):
+    """Lazily spin up a headless browser for a tool (its own cookie jar avoids clashes)."""
+    with _BROWSER_LOCK:
+        if name not in _BROWSERS:
+            t = _browser_targets().get(name)
+            if not t:
+                return None
+            _BROWSERS[name] = RemoteBrowser(t["url"], t["profile"])
+        return _BROWSERS[name]
 
 SPLUNK_PROXY_PORT = int(os.environ.get("SPLUNK_PROXY_PORT", "8074"))
 
@@ -222,14 +234,10 @@ def screens() -> dict:
         "defenseclaw": {"name": "DefenseClaw TUI", "embed": tt,
                         "url": f"http://127.0.0.1:{_TTYD['port']}/" if tt else "",
                         "why": "real terminal via ttyd (read-only)" if tt else "install ttyd + defenseclaw to embed"},
-        "splunk": ({"name": "Splunk", "embed": True, "url": f"http://127.0.0.1:{SPLUNK_PROXY_PORT}/",
-                    "tab_url": CFG["splunk_web"],
-                    "why": "real Splunk (framed via proxy). Cookie error? open in a fresh/incognito window — 127.0.0.1 cookies clash across ports"}
-                   if _SPLUNK_PROXY["up"] else
-                   {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
-                    "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab"}),
-        "galileo": {"name": "Galileo", "embed": False, "url": CFG["galileo_base"] or "",
-                    "why": "cloud SaaS with SSO — opens the real console; in-page needs a server-side browser layer + your login"},
+        "splunk": {"name": "Splunk", "embed": False, "view": "splunk", "tab_url": CFG["splunk_web"],
+                   "why": "real Splunk via the browser-layer (own cookie jar, so no cross-port clash)"},
+        "galileo": {"name": "Galileo", "embed": False, "view": "galileo", "tab_url": CFG["galileo_base"] or "",
+                    "why": "cloud SaaS — streamed via the browser-layer; log in once, it sticks"},
     }
 
 HERE = Path(__file__).parent
@@ -420,14 +428,16 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, [{k: s[k] for k in ("id", "label", "kind", "shows")} for s in SCENARIOS])
         if self.path == "/api/screens":
             return self._send(200, screens())
-        if self.path.startswith("/api/galileo/frame"):
-            gb = galileo_browser()
+        m = re.match(r"/api/view/([a-z0-9_-]+)/frame", self.path)
+        if m:
+            gb = get_browser(m.group(1))
+            if gb is None:
+                return self._send(404, {"error": "unknown view"})
             if gb.err:
                 return self._send(503, {"error": gb.err})
             if not gb.ready or gb.latest is None:
                 return self._send(202, {"status": "starting"})
-            q = urllib.parse.urlparse(self.path).query
-            have = urllib.parse.parse_qs(q).get("seq", ["-1"])[0]
+            have = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("seq", ["-1"])[0]
             if have == str(gb.seq):                 # client already has the newest -> nothing to send
                 self.send_response(204); self.send_header("X-Frame-Seq", str(gb.seq)); self.end_headers()
                 return
@@ -450,9 +460,10 @@ class H(BaseHTTPRequestHandler):
             b = {}
         if self.path == "/api/fire":
             return self._send(200, fire(b.get("scenario", "")))
-        if self.path == "/api/galileo/input":
-            gb = galileo_browser()
-            if not gb.ready:
+        mi = re.match(r"/api/view/([a-z0-9_-]+)/input", self.path)
+        if mi:
+            gb = get_browser(mi.group(1))
+            if gb is None or not gb.ready:
                 return self._send(202, {"status": "starting"})
             t = b.get("type")
             if t == "click":
@@ -505,10 +516,9 @@ def main():
     _ensure_playwright()
     port = int(os.environ.get("LAB_PORT", "8972"))
     start_ttyd()
-    if start_splunk_proxy():
-        print(f"Splunk framed via proxy on :{SPLUNK_PROXY_PORT}")
-    if start_ac_proxy():
+    if start_ac_proxy():                          # AC still needs the proxy (to inject its API key)
         print(f"Agent Control (key-injected) via proxy on :{AC_PROXY_PORT}")
+    # Splunk + Galileo now use the browser-layer (own cookie jar) instead of iframes.
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     except OSError as e:

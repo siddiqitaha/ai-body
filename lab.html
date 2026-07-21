@@ -251,24 +251,24 @@ function showScreen(k){
   document.querySelectorAll('#scr-tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.k===k));
   stopGalileo();
   const s=SCREENS[k],b=$('#scr-body');
-  if(k==='galileo'){ return startGalileo(b,s); }
+  if(s.view){ return startBrowserView(s.view,b,s); }
   if(s.embed&&s.url){ b.innerHTML=`<iframe src="${s.url}" title="${s.name}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>`+
     (s.tab_url?`<div class="galbar" style="border-top:1px solid var(--line2)">${s.why||''} · <a href="${s.tab_url}" target="_blank" rel="noopener">open in a new tab ↗</a></div>`:''); }
   else { b.innerHTML=`<div class="noembed">${s.name}<br><span style="color:var(--faint)">${s.why}</span>${s.url?`<br><a href="${s.url}" target="_blank" rel="noopener">open ${s.name} ↗</a>`:''}</div>`; }
 }
-function startGalileo(b,s){
-  b.innerHTML=`<div class="galwrap"><div class="galbar">real Galileo console — a headless browser on the box. <b>Log in once</b>, your session sticks. Click / type / scroll work here.</div>
-    <div class="galview" id="galview" tabindex="0"><img id="gframe" alt="Galileo"><div class="galmsg" id="galmsg">starting the browser…</div></div>
-    <div class="galbar"><a href="${s.url}" target="_blank" rel="noopener">or open Galileo in a new tab ↗</a></div></div>`;
+function startBrowserView(name,b,s){
+  b.innerHTML=`<div class="galwrap"><div class="galbar">real ${s.name} — a headless browser on the box (its own cookie jar). <b>Log in once</b>, it sticks. Click / type / scroll work here.</div>
+    <div class="galview" id="galview" tabindex="0"><img id="gframe" alt="${s.name}"><div class="galmsg" id="galmsg">starting the browser…</div></div>
+    <div class="galbar"><a href="${s.tab_url||s.url||'#'}" target="_blank" rel="noopener">or open ${s.name} in a new tab ↗</a></div></div>`;
   const img=$('#gframe'), view=$('#galview'), msg=$('#galmsg');
-  const send=(body)=>fetch('/api/galileo/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{if(r.w){GAL.w=r.w;GAL.h=r.h;}}).catch(()=>{});
+  const send=(body)=>fetch('/api/view/'+name+'/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(r=>{if(r.w){GAL.w=r.w;GAL.h=r.h;}}).catch(()=>{});
   const map=e=>{const r=img.getBoundingClientRect();return{x:Math.round((e.clientX-r.left)/r.width*GAL.w),y:Math.round((e.clientY-r.top)/r.height*GAL.h)};};
   view.onclick=e=>{const p=map(e);send({type:'click',...p});view.focus();};
   view.onwheel=e=>{e.preventDefault();send({type:'scroll',dy:Math.round(e.deltaY)});};
   view.onkeydown=e=>{const sp={'Enter':'Enter','Backspace':'Backspace','Tab':'Tab','Escape':'Escape','ArrowUp':'ArrowUp','ArrowDown':'ArrowDown','ArrowLeft':'ArrowLeft','ArrowRight':'ArrowRight','Delete':'Delete'};
     if(sp[e.key]){e.preventDefault();send({type:'key',key:sp[e.key]});} else if(e.key.length===1){e.preventDefault();send({type:'type',text:e.key});}};
   GAL.seq=-1;
-  const poll=async()=>{try{const r=await fetch('/api/galileo/frame?seq='+GAL.seq);
+  const poll=async()=>{try{const r=await fetch('/api/view/'+name+'/frame?seq='+GAL.seq);
     if(r.status===200){GAL.seq=r.headers.get('X-Frame-Seq')||GAL.seq;const bl=await r.blob();const u=URL.createObjectURL(bl);const old=img.src;img.src=u;if(old.startsWith('blob:'))URL.revokeObjectURL(old);img.style.display='block';msg.style.display='none';}
     else if(r.status===204){/* no change, keep current frame */}
     else if(r.status===202){msg.textContent='starting the browser… (first load can take ~10s)';}
