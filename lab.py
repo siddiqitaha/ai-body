@@ -115,7 +115,7 @@ def screens() -> dict:
                    {"name": "Splunk", "embed": False, "url": CFG["splunk_web"],
                     "why": "sends X-Frame-Options: SAMEORIGIN — opens in a tab"}),
         "galileo": {"name": "Galileo", "embed": False, "url": CFG["galileo_base"] or "",
-                    "why": "cloud SaaS — connect via API or a server-side browser layer"},
+                    "why": "cloud SaaS with SSO — opens the real console; in-page needs a server-side browser layer + your login"},
     }
 
 HERE = Path(__file__).parent
@@ -128,7 +128,7 @@ CFG = {
     "model_base": os.environ.get("MODEL_BASE", "http://127.0.0.1:8012/v1"),
     "splunk_web": os.environ.get("SPLUNK_WEB", "http://127.0.0.1:8090/"),
     "openclaw_base": os.environ.get("OPENCLAW_BASE", ""),   # e.g. http://127.0.0.1:19289
-    "galileo_base": os.environ.get("GALILEO_BASE", ""),
+    "galileo_base": os.environ.get("GALILEO_BASE", "https://console.galileo.ai"),
 }
 
 
