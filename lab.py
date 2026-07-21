@@ -145,7 +145,11 @@ _SPLUNK_PROXY = {"up": False}
 def start_splunk_proxy():
     if not _probe(CFG["splunk_web"])[0]:
         return False
-    srv = ThreadingHTTPServer(("127.0.0.1", SPLUNK_PROXY_PORT), _splunk_proxy_handler())
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", SPLUNK_PROXY_PORT), _splunk_proxy_handler())
+    except OSError as e:
+        print(f"  (Splunk proxy port {SPLUNK_PROXY_PORT} busy: {e} — Splunk falls back to open-in-tab)")
+        return False
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     _SPLUNK_PROXY["up"] = True
     return True
@@ -158,10 +162,16 @@ def start_ttyd():
     if _TTYD["proc"] or not shutil.which("ttyd") or not shutil.which("defenseclaw"):
         return
     try:
-        _TTYD["proc"] = subprocess.Popen(
+        p = subprocess.Popen(
             ["ttyd", "-p", str(_TTYD["port"]), "-i", "127.0.0.1", "-t", "fontSize=13",
              "-t", "theme={\"background\":\"#07090d\"}", "defenseclaw", "tui"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)          # no -W -> read-only
+        import time
+        time.sleep(0.4)
+        if p.poll() is not None:      # died immediately (e.g. port busy) -> don't advertise it
+            _TTYD["proc"] = None
+            return
+        _TTYD["proc"] = p
         atexit.register(lambda: _TTYD["proc"] and _TTYD["proc"].terminate())
     except Exception:
         _TTYD["proc"] = None
@@ -458,8 +468,14 @@ def main():
     start_ttyd()
     if start_splunk_proxy():
         print(f"Splunk framed via proxy on :{SPLUNK_PROXY_PORT}")
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", port), H)
+    except OSError as e:
+        print(f"Lab port {port} is busy ({e}). Another lab is already running — open http://127.0.0.1:{port}, "
+              f"or set LAB_PORT to a free port.")
+        return
     print(f"Governed Agents Lab -> http://127.0.0.1:{port}  (DefenseClaw TUI on :{_TTYD['port']})")
-    ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+    srv.serve_forever()
 
 
 if __name__ == "__main__":
